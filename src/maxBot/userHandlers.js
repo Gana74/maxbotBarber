@@ -2,7 +2,7 @@
  * Обработчики пользовательского меню для MAX Bot.
  */
 
-const { Keyboard, ImageAttachment } = require("@maxhub/max-bot-api");
+const { Keyboard } = require("@maxhub/max-bot-api");
 const { formatDate } = require("../utils/formatDate");
 const {
   validateAppointmentId,
@@ -48,33 +48,39 @@ function getServicesList(servicesService) {
   return servicesService.getAllServices();
 }
 
-async function sendPortfolio(ctx, sheetsService, adapter) {
-  const raw = (await sheetsService.getPortfolioFileIds()) || [];
-  const urls = raw
-    .map((item) => String(item).trim())
-    .filter((url) => validateSafeUrl(url))
-    .slice(0, 6);
+/**
+ * @returns {Promise<boolean>} true, если портфолио отправлено (приветствие + фото)
+ */
+async function sendPortfolio(ctx, sheetsService, welcomeName) {
+  const urls = ((await sheetsService.getPortfolioFileIds()) || []).slice(0, 6);
 
   if (!urls.length) {
-    return;
+    return false;
   }
 
+  await ctx.reply(
+    `Привет, ${welcomeName}! Я бот мастера по услугам красоты. Здесь можно записаться на стрижку.`,
+  );
+
   for (const photoUrl of urls) {
+    const url = String(photoUrl).trim();
+    if (!url || !validateSafeUrl(url)) {
+      console.warn(
+        "[WARN] Пропущена небезопасная или пустая ссылка портфолио:",
+        photoUrl,
+      );
+      continue;
+    }
+
     try {
-      const uploaded = adapter
-        ? await adapter.uploadImage({ url: photoUrl })
-        : await ctx.api.uploadImage({ url: photoUrl });
-      if (!uploaded?.token) continue;
-      const image = new ImageAttachment({ token: uploaded.token });
-      if (adapter) {
-        await adapter.reply(ctx, " ", { attachments: [image.toJson()] });
-      } else {
-        await ctx.reply(" ", { attachments: [image.toJson()] });
-      }
+      const image = await ctx.api.uploadImage({ url });
+      await ctx.reply(" ", { attachments: [image.toJson()] });
     } catch (error) {
-      console.error("[ERROR] Не удалось загрузить фото:", error);
+      console.warn("[WARN] Не удалось загрузить фото портфолио:", url, error);
     }
   }
+
+  return true;
 }
 
 function createUserHandlers(
@@ -92,12 +98,13 @@ function createUserHandlers(
 
     const name = getDisplayName(ctx);
 
-    await adapter.reply(
-      ctx,
-      `Привет, ${name}! Я бот мастера по услугам красоты. Здесь можно записаться на стрижку.`,
-    );
-
-    await sendPortfolio(ctx, sheetsService, adapter);
+    const portfolioSent = await sendPortfolio(ctx, sheetsService, name);
+    if (!portfolioSent) {
+      await adapter.reply(
+        ctx,
+        `Привет, ${name}! Я бот мастера по услугам красоты. Здесь можно записаться на стрижку.`,
+      );
+    }
 
     await showMainMenu(ctx);
   };

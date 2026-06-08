@@ -153,7 +153,7 @@ function createCoreHandlers({ adapter, config, showUserMainMenu }) {
     const imageRef = getMessageImageRef(ctx);
     if (!imageRef) return false;
 
-    if (await domains.settings.handlePortfolioUploadImage(ctx, imageRef)) {
+    if (await domains.settings.handlePortfolioUploadImage(ctx)) {
       return true;
     }
     if (await domains.broadcast.handleBroadcastImage(ctx, imageRef)) {

@@ -1339,69 +1339,29 @@ async function createSheetsService(config) {
     }
 
     const settings = await getSettings();
-    if (!settings.таймзона) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["таймзона", config.defaultTimezone]] },
-      });
-    }
-    // Инициализируем дефолтное сообщение напоминания, если его нет
-    if (!settings.напоминание_28день_текст) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: {
-          values: [
-            [
-              "напоминание_28день_текст",
-              "Привет, {clientName}! Тебя давно небыло на стрижке, пора подстричься!",
-            ],
-          ],
-        },
-      });
-    }
-    // Инициализируем дефолтную ссылку на чаевые, если её нет
-    if (!settings.ссылка_на_чаевые) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: {
-          values: [["ссылка_на_чаевые", ""]],
-        },
-      });
-    }
 
-    // Инициализируем портфолио (file_id) по умолчанию
-    if (!settings.портфолио_фото) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: {
-          values: [["портфолио_фото", "[]"]],
-        },
-      });
-    }
+    const defaultSettings = [
+      ["таймзона", config.defaultTimezone],
+      [
+        "напоминание_28день_текст",
+        "Привет, {clientName}! Тебя давно небыло на стрижке, пора подстричься!",
+      ],
+      ["ссылка_на_чаевые", ""],
+      ["портфолио_фото", "[]"],
+      ["ссылка_на_локацию", ""],
+    ];
 
-    // Инициализируем ссылку на локацию по умолчанию
-    if (!settings.ссылка_на_локацию) {
+    for (const [key, value] of defaultSettings) {
+      if (Object.hasOwn(settings, key)) continue;
+
       await sheets.spreadsheets.values.append({
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: {
-          values: [["ссылка_на_локацию", ""]],
-        },
+        requestBody: { values: [[key, value]] },
       });
+      settings[key] = value;
     }
 
     // Автоматическая миграция существующих данных в архив (только при первом запуске)

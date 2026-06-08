@@ -4,9 +4,7 @@ const {
   sanitizeText,
   validatePhone,
   validateSafeUrl,
-  validateImageAttachment,
 } = require("../../../utils/security");
-const { getMessageImageAttachment } = require("../helpers");
 const { logCriticalAction, logAdminAction, logError } = require("../../../utils/logger");
 const { sanitizeErrorMessage } = require("../../../utils/errorHandler");
 const { getUserId } = require("../helpers");
@@ -82,7 +80,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     ctx.session.adminAction = { type: "portfolio_upload" };
     await adapter.reply(
       ctx,
-      "Пришлите фото для портфолио.\nДля отмены напишите /admin_cancel",
+      "Отправьте прямую HTTPS-ссылку на изображение для портфолио. Для отмены напишите /admin_cancel",
     );
   };
 
@@ -149,6 +147,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
       "edit_tips_link",
       "edit_contacts",
       "portfolio_delete",
+      "portfolio_upload",
       "save_location",
     ];
     if (!settingsActions.includes(action)) return false;
@@ -391,6 +390,33 @@ function createSettingsHandlers({ adapter, sheetsService }) {
       return true;
     }
 
+    if (action === "portfolio_upload") {
+      const trimmed = text.trim();
+      const lower = trimmed.toLowerCase();
+      const isValidUrl =
+        lower.startsWith("http://") || lower.startsWith("https://");
+      if (!isValidUrl) {
+        await adapter.reply(
+          ctx,
+          "Ссылка должна начинаться с http:// или https://. /admin_cancel для отмены.",
+        );
+        return true;
+      }
+      try {
+        await sheetsService.addPortfolioFileId(trimmed);
+        await adapter.reply(ctx, "✅ Фото добавлено в портфолио.", {
+          attachments: [buildSettingsMenuKeyboard()],
+        });
+        delete ctx.session.adminAction;
+      } catch (e) {
+        await adapter.reply(
+          ctx,
+          `Ошибка при сохранении фото в портфолио: ${sanitizeErrorMessage(e)}`,
+        );
+      }
+      return true;
+    }
+
     if (action === "save_location") {
       const trimmed = (text || "").trim();
       if (!trimmed) {
@@ -419,34 +445,14 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     return false;
   };
 
-  const handlePortfolioUploadImage = async (ctx, imageRef) => {
+  const handlePortfolioUploadImage = async (ctx) => {
     const action = ctx.session?.adminAction?.type;
-    if (action !== "portfolio_upload" || !imageRef) return false;
+    if (action !== "portfolio_upload") return false;
 
-    const attachment = getMessageImageAttachment(ctx);
-    if (attachment) {
-      const validation = validateImageAttachment(attachment);
-      if (!validation.valid) {
-        await adapter.reply(
-          ctx,
-          "Недопустимое изображение. Разрешены JPEG/PNG/WebP до 10 МБ.",
-        );
-        return true;
-      }
-    }
-
-    try {
-      await sheetsService.addPortfolioFileId(imageRef);
-      await adapter.reply(ctx, "✅ Фото добавлено в портфолио.", {
-        attachments: [buildSettingsMenuKeyboard()],
-      });
-    } catch (e) {
-      await adapter.reply(
-        ctx,
-        `Ошибка при сохранении фото в портфолио: ${sanitizeErrorMessage(e)}`,
-      );
-    }
-    delete ctx.session.adminAction;
+    await adapter.reply(
+      ctx,
+      "Пожалуйста, отправьте прямую HTTPS-ссылку на изображение, а не сам файл, так как MAX API требует ссылки для постоянного хранения в портфолио.",
+    );
     return true;
   };
 
