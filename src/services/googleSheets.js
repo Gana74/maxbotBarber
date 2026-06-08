@@ -34,6 +34,12 @@ function safeCellValue(value, maxLength = 500, context = {}) {
   }
   return sanitizeSheetsInput(str, maxLength);
 }
+
+/** Телефон для листа «Настройки»: только цифры, без + и кавычек. */
+function normalizePhoneForStorage(phone) {
+  if (!phone || typeof phone !== "string") return "";
+  return phone.trim().replace(/^'+/, "").replace(/[^\d]/g, "");
+}
 const utc = require("dayjs/plugin/utc");
 const timezonePlugin = require("dayjs/plugin/timezone");
 const cron = require("node-cron");
@@ -1184,7 +1190,7 @@ async function createSheetsService(config) {
 
   async function getBarberPhone() {
     const settings = await getSettings();
-    return settings.телефон_мастера || "";
+    return normalizePhoneForStorage(settings.телефон_мастера || "");
   }
 
   async function getBarberAddress() {
@@ -1197,7 +1203,10 @@ async function createSheetsService(config) {
       throw new Error("Телефон не может быть пустым");
     }
 
-    const trimmedPhone = phone.trim();
+    const storedPhone = normalizePhoneForStorage(phone);
+    if (!storedPhone || storedPhone.length < 10) {
+      throw new Error("Телефон не может быть пустым");
+    }
 
     // Получаем все настройки
     const res = await sheets.spreadsheets.values.get({
@@ -1226,7 +1235,7 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
         requestBody: {
-          values: [[safeCellValue(trimmedPhone, 50, { field: "barber_phone" })]],
+          values: [[safeCellValue(storedPhone, 50, { field: "barber_phone" })]],
         },
       });
     } else {
@@ -1237,7 +1246,7 @@ async function createSheetsService(config) {
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
         requestBody: {
-          values: [["телефон_мастера", safeCellValue(trimmedPhone, 50, { field: "barber_phone" })]],
+          values: [["телефон_мастера", safeCellValue(storedPhone, 50, { field: "barber_phone" })]],
         },
       });
     }
