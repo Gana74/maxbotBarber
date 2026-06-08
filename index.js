@@ -12,7 +12,7 @@ const { createSheetsService } = require("./src/services/googleSheets");
 const { createCalendarService } = require("./src/services/googleCalendar");
 const { createBookingService } = require("./src/services/booking");
 const { setupReminders } = require("./src/services/reminders");
-const { createRateLimiter } = require("./src/middleware/rateLimiter");
+const { rateLimiter } = require("./src/middleware/rateLimiter");
 const servicesService = require("./src/services/services");
 
 /**
@@ -129,6 +129,7 @@ async function main() {
   });
 
   bot.use(maxSession());
+  bot.use(rateLimiter);
 
   bot.on("message_created", async (ctx, next) => {
     console.log(
@@ -149,8 +150,6 @@ async function main() {
     );
     return next();
   });
-
-  bot.use(createRateLimiter());
 
   registerUserHandlers(
     bot,

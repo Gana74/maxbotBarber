@@ -3,6 +3,7 @@
 
 const { google } = require("googleapis");
 const dayjs = require("dayjs");
+const { sanitizeSheetsInput } = require("../utils/security");
 const utc = require("dayjs/plugin/utc");
 const timezonePlugin = require("dayjs/plugin/timezone");
 const cron = require("node-cron");
@@ -1532,10 +1533,10 @@ async function createSheetsService(config) {
             date,
             timeStart,
             timeEnd,
-            clientName,
-            phone,
-            username || "",
-            comment || "",
+            sanitizeSheetsInput(clientName),
+            sanitizeSheetsInput(phone),
+            sanitizeSheetsInput(username || ""),
+            sanitizeSheetsInput(comment || ""),
             status || "активна",
             cancelCode,
             String(telegramId || ""),
@@ -1686,9 +1687,9 @@ async function createSheetsService(config) {
               clientId,
               firstSeenUtc,
               String(telegramId),
-              username || "",
-              name || "",
-              phone || "",
+              sanitizeSheetsInput(username || ""),
+              sanitizeSheetsInput(name || ""),
+              sanitizeSheetsInput(phone || ""),
               lastAppointmentAtUtc || "",
               1,
               "", // BanStatus
@@ -1709,9 +1710,9 @@ async function createSheetsService(config) {
         rowValues.push("");
       }
 
-      rowValues[3] = username || rowValues[3] || "";
-      rowValues[4] = name || rowValues[4] || "";
-      rowValues[5] = phone || rowValues[5] || "";
+      rowValues[3] = sanitizeSheetsInput(username || rowValues[3] || "");
+      rowValues[4] = sanitizeSheetsInput(name || rowValues[4] || "");
+      rowValues[5] = sanitizeSheetsInput(phone || rowValues[5] || "");
       rowValues[6] = lastAppointmentAtUtc || rowValues[6] || "";
       rowValues[7] = existingTotal + 1;
       // Напоминание_28день_UTC (индекс 10) не обновляем при upsert
@@ -2205,7 +2206,7 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.CLIENTS}!I${rowNumber}:J${rowNumber}`,
         valueInputOption: "RAW",
         requestBody: {
-          values: [[banValue, reason || ""]],
+          values: [[banValue, sanitizeSheetsInput(reason || "")]],
         },
       });
     }

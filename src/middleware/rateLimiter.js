@@ -16,13 +16,50 @@ const DEFAULT_LIMITS = {
 };
 
 /**
- * ID пользователя из контекста MAX (с fallback для совместимости).
+ * ID пользователя из контекста MAX.
  * @param {object} ctx
  * @returns {string|number|null}
  */
 function getUserIdFromCtx(ctx) {
-  const id = ctx?.user?.user_id ?? ctx?.from?.id;
+  const id = ctx?.user?.user_id;
   return id != null ? id : null;
+}
+
+/**
+ * Текст сообщения из контекста MAX.
+ * @param {object} ctx
+ * @returns {string}
+ */
+function getMessageText(ctx) {
+  return ctx.message?.body?.text?.trim() ?? "";
+}
+
+/**
+ * Payload callback-кнопки из контекста MAX.
+ * @param {object} ctx
+ * @returns {string}
+ */
+function getCallbackPayload(ctx) {
+  return ctx.update?.callback?.payload ?? "";
+}
+
+/**
+ * Админский контекст: команда /admin, другие admin-команды или admin-callback.
+ * @param {object} ctx
+ * @returns {boolean}
+ */
+function isAdminContext(ctx) {
+  const text = getMessageText(ctx);
+  if (text === "/admin" || text.startsWith("/admin_")) {
+    return true;
+  }
+
+  const payload = getCallbackPayload(ctx);
+  if (/^(admin:|revenue:|service_(edit|field|delete):)/.test(payload)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -110,12 +147,12 @@ function checkRateLimit(userId, type = "general", limit = null) {
 }
 
 /**
- * Определяет тип лимита по сессии (админ-режим vs обычный пользователь).
+ * Определяет тип лимита: admin (10/мин) или general (30/мин).
  * @param {object} ctx
  * @returns {'general' | 'admin'}
  */
 function resolveLimitType(ctx) {
-  if (ctx.session?.mode === "admin") {
+  if (isAdminContext(ctx)) {
     return "admin";
   }
   return "general";
@@ -124,16 +161,14 @@ function resolveLimitType(ctx) {
 /**
  * @param {object} [options]
  * @param {number} [options.generalLimit] - Лимит для общих запросов (по умолчанию 30/мин)
- * @param {number} [options.adminLimit] - Лимит для админ-режима (по умолчанию 10/мин)
+ * @param {number} [options.adminLimit] - Лимит для админ-команд (по умолчанию 10/мин)
  * @returns {(ctx: object, next: Function) => Promise<void>}
  */
 function createRateLimiter(options = {}) {
-  if (options.generalLimit != null) {
-    DEFAULT_LIMITS.general = options.generalLimit;
-  }
-  if (options.adminLimit != null) {
-    DEFAULT_LIMITS.admin = options.adminLimit;
-  }
+  const limits = {
+    general: options.generalLimit ?? DEFAULT_LIMITS.general,
+    admin: options.adminLimit ?? DEFAULT_LIMITS.admin,
+  };
 
   startCleanupTimer();
 
@@ -144,7 +179,7 @@ function createRateLimiter(options = {}) {
     }
 
     const type = resolveLimitType(ctx);
-    const allowed = checkRateLimit(userId, type);
+    const allowed = checkRateLimit(userId, type, limits[type]);
 
     if (!allowed) {
       try {
@@ -163,6 +198,9 @@ function createRateLimiter(options = {}) {
   };
 }
 
+/** Готовый middleware для bot.use(rateLimiter) */
+const rateLimiter = createRateLimiter();
+
 process.on("SIGINT", () => {
   stopCleanupTimer();
   userRequests.clear();
@@ -174,8 +212,10 @@ process.on("SIGTERM", () => {
 });
 
 module.exports = {
+  rateLimiter,
   createRateLimiter,
   checkRateLimit,
   cleanup,
   getUserIdFromCtx,
+  isAdminContext,
 };

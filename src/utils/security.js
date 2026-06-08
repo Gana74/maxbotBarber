@@ -180,6 +180,30 @@ function validateDataSize(data, maxSizeKB = 10) {
 }
 
 /**
+ * Санитизация текста перед записью в Google Sheets (защита от formula injection).
+ * Если строка начинается с =, +, - или @, добавляется апостроф в начало.
+ * @param {string} text - Текст для записи в таблицу
+ * @param {number} [maxLength=500] - Максимальная длина
+ * @returns {string}
+ */
+function sanitizeSheetsInput(text, maxLength = 500) {
+  if (text == null || typeof text !== "string") {
+    return "";
+  }
+
+  let sanitized = text.trim();
+  if (sanitized.length > maxLength) {
+    sanitized = sanitized.substring(0, maxLength);
+  }
+
+  if (/^[=+\-@]/.test(sanitized)) {
+    sanitized = `'${sanitized}`;
+  }
+
+  return sanitized;
+}
+
+/**
  * Очистка кэша валидации (для тестирования или при необходимости)
  */
 function clearValidationCache() {
@@ -191,6 +215,7 @@ module.exports = {
   validatePhone,
   validateName,
   sanitizeText,
+  sanitizeSheetsInput,
   validateAppointmentId,
   validateDataSize,
   clearValidationCache,
