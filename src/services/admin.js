@@ -1,9 +1,9 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { ImageAttachment } = require("@maxhub/max-bot-api");
+const { schedule } = require("../utils/apiRateLimiter");
 
 const BANS_FILE = path.resolve(process.cwd(), "banned.json");
-const DEFAULT_THROTTLE_MS = 750;
 
 async function readBans() {
   try {
@@ -111,7 +111,9 @@ async function sendMessageToUser(bot, userId, text, options = {}) {
   }
 
   try {
-    return await bot.api.sendMessageToUser(Number(userId), text, options);
+    return await schedule(() =>
+      bot.api.sendMessageToUser(Number(userId), text, options),
+    );
   } catch (err) {
     logBroadcastSendError("sendMessage", userId, err);
     return null;
@@ -136,14 +138,18 @@ async function sendPhotoToUser(bot, userId, urlOrToken, caption = "") {
     let imageAttachment;
 
     if (/^https?:\/\//i.test(value)) {
-      imageAttachment = await bot.api.uploadImage({ url: value });
+      imageAttachment = await schedule(() =>
+        bot.api.uploadImage({ url: value }),
+      );
     } else {
       imageAttachment = new ImageAttachment({ token: value });
     }
 
-    return await bot.api.sendMessageToUser(Number(userId), caption, {
-      attachments: [imageAttachment.toJson()],
-    });
+    return await schedule(() =>
+      bot.api.sendMessageToUser(Number(userId), caption, {
+        attachments: [imageAttachment.toJson()],
+      }),
+    );
   } catch (err) {
     logBroadcastSendError("sendPhoto", userId, err);
     return null;
@@ -165,15 +171,10 @@ async function broadcastToClients(
 
   // Normalize options for backward compatibility (old style: throttleMs number or object)
   let recipients = null;
-  let optsThrottle = DEFAULT_THROTTLE_MS;
   let skipBanned = true;
-  if (typeof options === "number") {
-    optsThrottle = options;
-  } else if (typeof options === "object" && options !== null) {
+  if (typeof options === "object" && options !== null) {
     const o = options;
     recipients = Array.isArray(o.recipients) ? o.recipients.map(String) : null;
-    optsThrottle =
-      typeof o.throttleMs === "number" ? o.throttleMs : DEFAULT_THROTTLE_MS;
     skipBanned = o.skipBanned !== false;
   }
 
@@ -246,7 +247,6 @@ async function broadcastToClients(
     } else {
       results.push({ id: tid, ok: false, error: "Failed to send message" });
     }
-    if (optsThrottle) await new Promise((r) => setTimeout(r, optsThrottle));
   }
 
   // Отмечаем успешно отправленных клиентов меткой рассылки

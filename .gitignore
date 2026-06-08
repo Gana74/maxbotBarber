@@ -1,7 +1,11 @@
 node_modules/
 .env
+.env.local
+.env.production
 credentials.json
 sessions.json
 banned.json
 security.log
+logs/
+backups/
 src/bot_telegram_LEGACY/

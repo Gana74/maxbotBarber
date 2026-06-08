@@ -2,8 +2,13 @@ const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezonePlugin = require("dayjs/plugin/timezone");
 const adminService = require("../../../services/admin");
-const { sanitizeText } = require("../../../utils/security");
+const {
+  sanitizeText,
+  validateImageAttachment,
+} = require("../../../utils/security");
+const { getMessageImageAttachment } = require("../helpers");
 const { logCriticalAction } = require("../../../utils/logger");
+const { sanitizeErrorMessage } = require("../../../utils/errorHandler");
 const { getUserId, getMessageCaption } = require("../helpers");
 const { MAX_BROADCAST_RECIPIENTS } = require("../constants");
 const {
@@ -61,7 +66,7 @@ function createBroadcastHandlers({ adapter, sheetsService, bot }) {
       console.error("Ошибка при получении статуса рассылки:", err);
       await adapter.reply(
         ctx,
-        `Ошибка при получении статуса рассылки: ${err.message}`,
+        `Ошибка при получении статуса рассылки: ${sanitizeErrorMessage(err)}`,
         { attachments: [buildMainMenuKeyboard()] },
       );
     }
@@ -222,7 +227,19 @@ function createBroadcastHandlers({ adapter, sheetsService, bot }) {
     const action = ctx.session?.adminAction?.type;
     if (action !== "broadcast" || !imageRef) return false;
 
-    const caption = getMessageCaption(ctx);
+    const attachment = getMessageImageAttachment(ctx);
+    if (attachment) {
+      const validation = validateImageAttachment(attachment);
+      if (!validation.valid) {
+        await adapter.reply(
+          ctx,
+          "Недопустимое изображение. Разрешены JPEG/PNG/WebP до 10 МБ.",
+        );
+        return true;
+      }
+    }
+
+    const caption = sanitizeText(getMessageCaption(ctx), 4000);
     await showBroadcastPreview(
       ctx,
       { kind: "photo", fileId: imageRef, caption },

@@ -1,7 +1,10 @@
 {
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "security:audit": "npm audit --production",
+    "security:fix": "npm audit fix --production",
+    "security:check": "npm run security:audit && npx snyk test"
   },
   "dependencies": {
     "@maxhub/max-bot-api": "^0.2.2",

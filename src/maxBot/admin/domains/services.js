@@ -1,5 +1,6 @@
 const { Keyboard } = require("@maxhub/max-bot-api");
 const servicesService = require("../../../services/services");
+const { validateServiceKey, sanitizeText } = require("../../../utils/security");
 const { clearAdminScenario } = require("../helpers");
 const { buildServicesMenuKeyboard } = require("../keyboards");
 
@@ -69,6 +70,12 @@ function createServicesHandlers({ adapter, menus }) {
 
   const handleServiceEditCallback = async (ctx, key) => {
     await adapter.answerCallback(ctx);
+    if (!validateServiceKey(key)) {
+      await adapter.reply(ctx, "Некорректный ключ услуги.", {
+        attachments: [buildServicesMenuKeyboard()],
+      });
+      return;
+    }
     const service = servicesService.getServiceByKey(key);
     if (!service) {
       await adapter.reply(ctx, "Услуга не найдена.", {
@@ -127,6 +134,12 @@ function createServicesHandlers({ adapter, menus }) {
 
   const handleServiceDeleteCallback = async (ctx, key) => {
     await adapter.answerCallback(ctx);
+    if (!validateServiceKey(key)) {
+      await adapter.reply(ctx, "Некорректный ключ услуги.", {
+        attachments: [buildServicesMenuKeyboard()],
+      });
+      return;
+    }
     const service = servicesService.getServiceByKey(key);
     if (!service) {
       await adapter.reply(ctx, "Услуга не найдена.", {
@@ -160,7 +173,7 @@ function createServicesHandlers({ adapter, menus }) {
           );
           return true;
         }
-        if (!/^[A-Za-z0-9_]+$/.test(key)) {
+        if (!validateServiceKey(key)) {
           await adapter.reply(
             ctx,
             "Ключ должен содержать только латинские буквы, цифры и подчёркивания. Попробуйте снова или /admin_cancel для отмены.",
@@ -172,7 +185,8 @@ function createServicesHandlers({ adapter, menus }) {
         return true;
       }
       if (servicesAction.step === "name") {
-        if (!text) {
+        const name = sanitizeText(text, 100);
+        if (!name) {
           await adapter.reply(
             ctx,
             "Название не может быть пустым. Попробуйте снова или /admin_cancel для отмены.",
@@ -183,7 +197,7 @@ function createServicesHandlers({ adapter, menus }) {
           type: "create",
           step: "price",
           key: servicesAction.key,
-          name: text,
+          name,
         };
         await adapter.reply(
           ctx,
@@ -254,7 +268,8 @@ function createServicesHandlers({ adapter, menus }) {
     if (servicesAction.type === "update") {
       const field = servicesAction.step;
       if (field === "name") {
-        if (!text) {
+        const name = sanitizeText(text, 100);
+        if (!name) {
           await adapter.reply(
             ctx,
             "Название не может быть пустым. Попробуйте снова или /admin_cancel для отмены.",
@@ -262,7 +277,7 @@ function createServicesHandlers({ adapter, menus }) {
           return true;
         }
         const result = servicesService.updateService(servicesAction.key, {
-          name: text,
+          name,
         });
         delete ctx.session.servicesAction;
         await adapter.reply(

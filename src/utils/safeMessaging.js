@@ -1,6 +1,16 @@
 // Утилиты для безопасной отправки сообщений с обработкой ошибок
 // Предотвращает крах бота при отправке сообщений заблокировавшим пользователям
 
+const { getRetryAfterMs, isRateLimitError } = require("./apiRateLimiter");
+
+/**
+ * @param {Error} err
+ * @returns {number|string|undefined}
+ */
+function getErrorCode(err) {
+  return err?.status ?? err?.response?.error_code ?? err?.code;
+}
+
 /**
  * Универсальный ID пользователя (MAX: ctx.user.user_id, Telegraf: ctx.from.id).
  * @param {Object} ctx - Контекст бота
@@ -40,8 +50,9 @@ async function safeSendMessage(bot, chatId, text, options = {}) {
     const result = await telegram.sendMessage(chatId, text, options);
     return result;
   } catch (err) {
-    const errorCode = err.response?.error_code;
-    const errorDescription = err.response?.description || err.message;
+    const errorCode = getErrorCode(err);
+    const errorDescription =
+      err.description || err.response?.description || err.message;
 
     // 403 Forbidden - пользователь заблокировал бота
     if (errorCode === 403) {
@@ -60,9 +71,10 @@ async function safeSendMessage(bot, chatId, text, options = {}) {
     }
 
     // 429 Too Many Requests - превышен лимит запросов
-    if (errorCode === 429) {
+    if (errorCode === 429 || isRateLimitError(err)) {
+      const retryMs = getRetryAfterMs(err);
       console.warn(
-        `[safeMessaging] Rate limit exceeded for chat ${chatId}. Retry after: ${err.response?.parameters?.retry_after || 'unknown'}s`,
+        `[safeMessaging] Rate limit exceeded for chat ${chatId}. Retry after: ${retryMs ? `${retryMs}ms` : "unknown"}`,
       );
       return null;
     }
@@ -107,8 +119,9 @@ async function safeSendPhoto(bot, chatId, photo, options = {}) {
     const result = await telegram.sendPhoto(chatId, photo, options);
     return result;
   } catch (err) {
-    const errorCode = err.response?.error_code;
-    const errorDescription = err.response?.description || err.message;
+    const errorCode = getErrorCode(err);
+    const errorDescription =
+      err.description || err.response?.description || err.message;
 
     // 403 Forbidden - пользователь заблокировал бота
     if (errorCode === 403) {
@@ -127,9 +140,10 @@ async function safeSendPhoto(bot, chatId, photo, options = {}) {
     }
 
     // 429 Too Many Requests
-    if (errorCode === 429) {
+    if (errorCode === 429 || isRateLimitError(err)) {
+      const retryMs = getRetryAfterMs(err);
       console.warn(
-        `[safeMessaging] Rate limit exceeded for chat ${chatId}. Retry after: ${err.response?.parameters?.retry_after || 'unknown'}s`,
+        `[safeMessaging] Rate limit exceeded for chat ${chatId}. Retry after: ${retryMs ? `${retryMs}ms` : "unknown"}`,
       );
       return null;
     }
@@ -166,8 +180,9 @@ async function safeReply(ctx, text, extra = {}) {
     const result = await ctx.reply(text, extra);
     return result;
   } catch (err) {
-    const errorCode = err.response?.error_code;
-    const errorDescription = err.response?.description || err.message;
+    const errorCode = getErrorCode(err);
+    const errorDescription =
+      err.description || err.response?.description || err.message;
     const userId = getUserId(ctx);
 
     // 403 Forbidden - пользователь заблокировал бота
@@ -187,9 +202,10 @@ async function safeReply(ctx, text, extra = {}) {
     }
 
     // 429 Too Many Requests
-    if (errorCode === 429) {
+    if (errorCode === 429 || isRateLimitError(err)) {
+      const retryMs = getRetryAfterMs(err);
       console.warn(
-        `[safeMessaging] Rate limit exceeded for user ${userId}. Retry after: ${err.response?.parameters?.retry_after || 'unknown'}s`,
+        `[safeMessaging] Rate limit exceeded for user ${userId}. Retry after: ${retryMs ? `${retryMs}ms` : "unknown"}`,
       );
       return null;
     }
@@ -218,8 +234,8 @@ function isBlockedError(err) {
  * @param {Error} err - Объект ошибки
  * @returns {boolean} true если превышен лимит запросов
  */
-function isRateLimitError(err) {
-  return err.response?.error_code === 429;
+function isRateLimitErrorLegacy(err) {
+  return getErrorCode(err) === 429 || isRateLimitError(err);
 }
 
 module.exports = {
@@ -228,5 +244,5 @@ module.exports = {
   safeSendPhoto,
   safeReply,
   isBlockedError,
-  isRateLimitError,
+  isRateLimitError: isRateLimitErrorLegacy,
 };

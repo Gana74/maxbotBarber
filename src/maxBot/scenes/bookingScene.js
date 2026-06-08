@@ -12,7 +12,15 @@ dayjs.extend(timezonePlugin);
 
 const servicesService = require("../../services/services");
 const { formatDate } = require("../../utils/formatDate");
-const { validateName, validatePhone, sanitizeText } = require("../../utils/security");
+const {
+  validateName,
+  validatePhone,
+  sanitizeText,
+  sanitizeDisplayName,
+  validateServiceKey,
+  validateTimeStr,
+} = require("../../utils/security");
+const { guardCallback } = require("../admin/helpers");
 const { logAction } = require("../../utils/logger");
 const { safeSendMessage } = require("../../utils/safeMessaging");
 
@@ -193,15 +201,15 @@ function extractPhoneFromContact(ctx) {
   if (!phone.startsWith("+")) {
     phone = `+${phone}`;
   }
-  return phone;
+  return validatePhone(phone) ? phone : null;
 }
 
 function resolveProfileName(ctx) {
-  const profileName = ctx.user?.name?.trim();
-  if (!profileName || !validateName(profileName, 1, 50)) {
+  const profileName = sanitizeDisplayName(ctx.user?.name || "");
+  if (!profileName || profileName === "Пользователь") {
     return null;
   }
-  return sanitizeText(profileName, 50);
+  return profileName;
 }
 
 function createBookingHandlers(adapter, sheetsService, bookingService) {
@@ -429,6 +437,10 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
     }
 
     const serviceKey = payload.slice("book_svc:".length);
+    if (!validateServiceKey(serviceKey)) {
+      await showServiceStep(ctx);
+      return;
+    }
     const service = bookingService.getServiceByKey(serviceKey);
     if (!service) {
       await showServiceStep(ctx);
@@ -533,7 +545,11 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
       return;
     }
 
-    data.timeStr = payload.slice("time:".length);
+    const timeStr = payload.slice("time:".length);
+    if (!validateTimeStr(timeStr)) {
+      return;
+    }
+    data.timeStr = timeStr;
     await proceedAfterTimeSelected(ctx);
   };
 
@@ -596,6 +612,19 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
         return;
       }
 
+      if (result.reason === "daily_limit_exceeded") {
+        const existingCount = result.existingCount || 4;
+        await adapter.reply(
+          ctx,
+          `❌ Нельзя создать запись: превышен дневной лимит!\n\n` +
+            `Сегодня вы уже создали ${existingCount} записей.\n` +
+            `Ограничение: не более 4 записей в день.\n\n` +
+            `Попробуйте снова завтра или свяжитесь с администрацией.`,
+        );
+        await returnToUserMenu(ctx);
+        return;
+      }
+
       if (result.reason === "slot_taken") {
         await adapter.reply(
           ctx,
@@ -635,6 +664,28 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
         await returnToUserMenu(
           ctx,
           "Ваш аккаунт заблокирован для записи. Свяжитесь с администратором.",
+        );
+        return;
+      }
+
+      if (result.reason === "global_limit") {
+        await adapter.reply(
+          ctx,
+          "Сейчас слишком много записей. Пожалуйста, попробуйте через минуту.",
+        );
+        await returnToUserMenu(ctx);
+        return;
+      }
+
+      if (
+        result.reason === "invalid_client" ||
+        result.reason === "invalid_service" ||
+        result.reason === "invalid_date" ||
+        result.reason === "invalid_time"
+      ) {
+        await returnToUserMenu(
+          ctx,
+          "Не удалось создать запись: некорректные данные. Начните запись заново.",
         );
         return;
       }
@@ -855,6 +906,7 @@ function registerBookingHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action(/^book_svc:.+/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     await adapter.answerCallback(ctx);
     await h.handleServiceCallback(ctx);
   });
@@ -894,6 +946,7 @@ function registerBookingHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action(/^time:.+/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     await adapter.answerCallback(ctx);
     if (ctx.session?.step === STEPS.CHOOSING_TIME) {
       await h.handleTimeCallback(ctx);
@@ -912,6 +965,7 @@ function registerBookingHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action("confirm", async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     await adapter.answerCallback(ctx);
     await h.handleConfirmCallback(ctx);
   });

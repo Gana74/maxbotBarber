@@ -1,17 +1,40 @@
 /**
  * Адаптер MAX Bot API — эмуляция интерфейса Telegraf для сервисов и утилит.
- * Не меняет бизнес-логику в src/services/; подключается снаружи (index, handlers).
  */
 
 const { Keyboard, ImageAttachment } = require("@maxhub/max-bot-api");
 const { persistChatId, resolveChatId } = require("../utils/maxChat");
+const { schedule } = require("../utils/apiRateLimiter");
+const { enforceKeyboardLimits } = require("../utils/maxKeyboard");
+
+/**
+ * Проверяет структуру ответа MAX API.
+ * @param {object|null} response
+ * @param {string[]} [expectedFields]
+ * @returns {boolean}
+ */
+function validateApiResponse(response, expectedFields = []) {
+  if (response === null) {
+    return false;
+  }
+  if (response === undefined) {
+    return true;
+  }
+  if (typeof response !== "object") {
+    return true;
+  }
+  if (!expectedFields.length) {
+    return true;
+  }
+  return expectedFields.every((field) => field in response);
+}
 
 class MaxAdapter {
   /**
-   * @param {object} config — конфиг приложения (managerChatId и др.)
-   * @param {object} sheetsService — сервис Google Sheets
-   * @param {object|null} calendarService — сервис Google Calendar
-   * @param {import('@maxhub/max-bot-api').Bot} bot — экземпляр MAX Bot
+   * @param {object} config
+   * @param {object} sheetsService
+   * @param {object|null} calendarService
+   * @param {import('@maxhub/max-bot-api').Bot} bot
    */
   constructor(config, sheetsService, calendarService, bot) {
     if (!config || !bot?.api) {
@@ -25,9 +48,6 @@ class MaxAdapter {
     this.api = bot.api;
   }
 
-  /**
-   * Совместимость с safeMessaging (bot.telegram.sendMessage).
-   */
   get telegram() {
     return {
       sendMessage: (chatId, text, options) =>
@@ -37,20 +57,10 @@ class MaxAdapter {
     };
   }
 
-  /**
-   * ID пользователя MAX из контекста (аналог ctx.from.id).
-   * @param {import('@maxhub/max-bot-api').Context} ctx
-   * @returns {number|undefined}
-   */
   getUserId(ctx) {
     return ctx?.user?.user_id;
   }
 
-  /**
-   * Проверка прав администратора.
-   * @param {import('@maxhub/max-bot-api').Context} ctx
-   * @returns {boolean}
-   */
   isAdmin(ctx) {
     const userId = this.getUserId(ctx);
     if (userId == null || this.config.managerChatId == null) {
@@ -59,13 +69,6 @@ class MaxAdapter {
     return userId === Number(this.config.managerChatId);
   }
 
-  /**
-   * Отправка текста пользователю (аналог bot.telegram.sendMessage).
-   * @param {number|string} userId
-   * @param {string} text
-   * @param {object} [extra] — format, attachments, link и др. (SendMessageExtra)
-   * @returns {Promise<object|null>}
-   */
   async sendMessage(userId, text, extra = {}) {
     if (userId == null || userId === "") {
       console.error("[MaxAdapter] sendMessage: пустой userId");
@@ -73,21 +76,20 @@ class MaxAdapter {
     }
 
     try {
-      return await this.api.sendMessageToUser(Number(userId), text, extra);
+      const result = await schedule(() =>
+        this.api.sendMessageToUser(Number(userId), text, extra),
+      );
+      if (!validateApiResponse(result)) {
+        console.warn("[MaxAdapter] sendMessage: unexpected API response");
+        return null;
+      }
+      return result;
     } catch (err) {
       this._logSendError("sendMessage", userId, err);
       return null;
     }
   }
 
-  /**
-   * Отправка изображения по URL или token MAX.
-   * @param {number|string} userId
-   * @param {string} urlOrToken — HTTPS URL или token уже загруженного файла
-   * @param {string} [caption]
-   * @param {object} [extra] — доп. параметры sendMessage (без caption)
-   * @returns {Promise<object|null>}
-   */
   async sendPhoto(userId, urlOrToken, caption = "", extra = {}) {
     if (userId == null || userId === "") {
       console.error("[MaxAdapter] sendPhoto: пустой userId");
@@ -107,24 +109,23 @@ class MaxAdapter {
         ...(Array.isArray(rest.attachments) ? rest.attachments : []),
       ];
 
-      return await this.api.sendMessageToUser(Number(userId), caption, {
-        ...rest,
-        attachments,
-      });
+      const result = await schedule(() =>
+        this.api.sendMessageToUser(Number(userId), caption, {
+          ...rest,
+          attachments,
+        }),
+      );
+      if (!validateApiResponse(result)) {
+        console.warn("[MaxAdapter] sendPhoto: unexpected API response");
+        return null;
+      }
+      return result;
     } catch (err) {
       this._logSendError("sendPhoto", userId, err);
       return null;
     }
   }
 
-  /**
-   * Сообщение с inline-клавиатурой.
-   * @param {number|string} userId
-   * @param {string} text
-   * @param {Array} keyboardArray — ряды кнопок (см. _buildInlineKeyboard)
-   * @param {object} [extra]
-   * @returns {Promise<object|null>}
-   */
   async sendKeyboard(userId, text, keyboardArray, extra = {}) {
     const keyboard = this._buildInlineKeyboard(keyboardArray);
     if (!keyboard) {
@@ -140,24 +141,11 @@ class MaxAdapter {
     return this.sendMessage(userId, text, { ...extra, attachments });
   }
 
-  /**
-   * MAX API требует непустой text при отправке сообщения.
-   * @param {string} [text]
-   * @returns {string}
-   * @private
-   */
   _normalizeReplyText(text) {
     const value = text == null ? "" : String(text);
     return value.trim() === "" ? "Сообщение" : value;
   }
 
-  /**
-   * Ответ в текущий чат (аналог ctx.reply).
-   * При message_callback chatId может отсутствовать — тогда отправка по user_id.
-   * @param {import('@maxhub/max-bot-api').Context} ctx
-   * @param {string} text
-   * @param {object} [extra]
-   */
   async reply(ctx, text, extra = {}) {
     if (!ctx) {
       console.error("[MaxAdapter] reply: ctx недоступен");
@@ -181,27 +169,25 @@ class MaxAdapter {
 
     try {
       if (chatId != null) {
-        return await this.api.sendMessageToChat(
-          chatId,
-          messageText,
-          extra,
+        const result = await schedule(() =>
+          this.api.sendMessageToChat(chatId, messageText, extra),
         );
-      }
-
-      if (!hasAttachments && userId != null) {
-        return await this.api.sendMessageToUser(
-          Number(userId),
-          messageText,
-          extra,
-        );
+        if (!validateApiResponse(result)) {
+          console.warn("[MaxAdapter] reply(chat): unexpected API response");
+          return null;
+        }
+        return result;
       }
 
       if (userId != null) {
-        return await this.api.sendMessageToUser(
-          Number(userId),
-          messageText,
-          extra,
+        const result = await schedule(() =>
+          this.api.sendMessageToUser(Number(userId), messageText, extra),
         );
+        if (!validateApiResponse(result)) {
+          console.warn("[MaxAdapter] reply(user): unexpected API response");
+          return null;
+        }
+        return result;
       }
 
       console.error(
@@ -216,11 +202,6 @@ class MaxAdapter {
     }
   }
 
-  /**
-   * Ответ на callback-кнопку (обязательны notification или message).
-   * @param {import('@maxhub/max-bot-api').Context} ctx
-   * @param {object} [extra]
-   */
   async answerCallback(ctx, extra = {}) {
     const callbackId = ctx?.callback?.callback_id;
     if (!callbackId) {
@@ -240,34 +221,34 @@ class MaxAdapter {
     }
   }
 
-  /**
-   * @param {string} urlOrToken
-   * @returns {Promise<import('@maxhub/max-bot-api').ImageAttachment>}
-   * @private
-   */
+  async uploadImage(options) {
+    try {
+      const result = await schedule(() => this.api.uploadImage(options));
+      if (!result || (result.token == null && typeof result.toJson !== "function")) {
+        console.warn("[MaxAdapter] uploadImage: unexpected API response");
+        return null;
+      }
+      return result;
+    } catch (err) {
+      this._logSendError("uploadImage", "api", err);
+      return null;
+    }
+  }
+
   async _resolveImageAttachment(urlOrToken) {
     const value = String(urlOrToken).trim();
 
     if (/^https?:\/\//i.test(value)) {
-      return this.api.uploadImage({ url: value });
+      const uploaded = await this.uploadImage({ url: value });
+      if (!uploaded?.token) {
+        throw new Error("uploadImage did not return token");
+      }
+      return new ImageAttachment({ token: uploaded.token });
     }
 
     return new ImageAttachment({ token: value });
   }
 
-  /**
-   * Преобразует массив рядов кнопок в attachment inline_keyboard.
-   * Поддерживает:
-   * - готовый объект Keyboard.inlineKeyboard (type === 'inline_keyboard')
-   * - кнопки MAX ({ type: 'callback', text, payload })
-   * - Telegraf-стиль { text, callback_data }
-   * - кортеж ['Подпись', 'payload']
-   * - строку payload (текст = payload)
-   *
-   * @param {Array} keyboardArray
-   * @returns {object|null}
-   * @private
-   */
   _buildInlineKeyboard(keyboardArray) {
     if (!keyboardArray) {
       return null;
@@ -284,19 +265,16 @@ class MaxAdapter {
       return null;
     }
 
-    const rows = keyboardArray.map((row) => {
-      const buttons = Array.isArray(row) ? row : [row];
-      return buttons.map((btn) => this._normalizeButton(btn));
-    });
+    const rows = enforceKeyboardLimits(
+      keyboardArray.map((row) => {
+        const buttons = Array.isArray(row) ? row : [row];
+        return buttons.map((btn) => this._normalizeButton(btn));
+      }),
+    );
 
     return Keyboard.inlineKeyboard(rows);
   }
 
-  /**
-   * @param {object|string|Array} btn
-   * @returns {object}
-   * @private
-   */
   _normalizeButton(btn) {
     if (btn == null) {
       throw new Error("[MaxAdapter] пустая кнопка в клавиатуре");
@@ -333,9 +311,6 @@ class MaxAdapter {
     return Keyboard.button.callback(payload, payload);
   }
 
-  /**
-   * @private
-   */
   _logSendError(method, targetId, err) {
     const message = err?.message ?? String(err);
     const code = err?.status ?? err?.code;
@@ -346,4 +321,4 @@ class MaxAdapter {
   }
 }
 
-module.exports = { MaxAdapter };
+module.exports = { MaxAdapter, validateApiResponse };

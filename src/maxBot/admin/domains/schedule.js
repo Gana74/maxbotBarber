@@ -1,4 +1,6 @@
 const { toIsoDate } = require("../helpers");
+const { validateDateStr, validateTimeStr } = require("../../../utils/security");
+const { sanitizeErrorMessage } = require("../../../utils/errorHandler");
 const { buildScheduleMenuKeyboard } = require("../keyboards");
 
 function createScheduleHandlers({ adapter, sheetsService }) {
@@ -63,7 +65,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
         'Чтобы отредактировать конкретную дату, используйте пункт "Изменить/добавить расписание на дату" и укажите нужную дату.',
       );
     } catch (e) {
-      await adapter.reply(ctx, `Ошибка при получении расписания: ${e.message || e}`, {
+      await adapter.reply(ctx, `Ошибка при получении расписания: ${sanitizeErrorMessage(e)}`, {
         attachments: [buildScheduleMenuKeyboard()],
       });
     }
@@ -101,7 +103,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
         'Укажите день недели (например, Пн, Вт, Ср или mon/tue/...)\nили напишите "удалить Пн" чтобы удалить шаблон для Пн:',
       );
     } catch (e) {
-      await adapter.reply(ctx, `Ошибка при получении шаблонов: ${e.message || e}`);
+      await adapter.reply(ctx, `Ошибка при получении шаблонов: ${sanitizeErrorMessage(e)}`);
     }
   };
 
@@ -121,6 +123,13 @@ function createScheduleHandlers({ adapter, sheetsService }) {
 
       scheduleAction.dateInput = input;
       const isoDate = toIsoDate(input);
+      if (!isoDate || !validateDateStr(isoDate)) {
+        await adapter.reply(
+          ctx,
+          "Некорректная дата. Используйте ДД.ММ.ГГГГ или ГГГГ-ММ-ДД.",
+        );
+        return true;
+      }
 
       if (scheduleAction.type === "view") {
         try {
@@ -144,7 +153,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
             });
           }
         } catch (e) {
-          await adapter.reply(ctx, `Ошибка при получении расписания: ${e.message || e}`);
+          await adapter.reply(ctx, `Ошибка при получении расписания: ${sanitizeErrorMessage(e)}`);
         }
         delete ctx.session.scheduleAction;
         return true;
@@ -168,7 +177,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
             { attachments: [buildScheduleMenuKeyboard()] },
           );
         } catch (e) {
-          await adapter.reply(ctx, `Ошибка при удалении расписания: ${e.message || e}`);
+          await adapter.reply(ctx, `Ошибка при удалении расписания: ${sanitizeErrorMessage(e)}`);
         }
         delete ctx.session.scheduleAction;
         return true;
@@ -186,7 +195,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
       }
 
       if (scheduleAction.step === "start") {
-        if (!/^\d{2}:\d{2}$/.test(text || "")) {
+        if (!validateTimeStr(text || "")) {
           await adapter.reply(
             ctx,
             "Некорректный формат времени. Укажите время в формате HH:MM (например, 10:00):",
@@ -203,7 +212,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
       }
 
       if (scheduleAction.step === "end") {
-        if (!/^\d{2}:\d{2}$/.test(text || "")) {
+        if (!validateTimeStr(text || "")) {
           await adapter.reply(
             ctx,
             "Некорректный формат времени. Укажите время в формате HH:MM (например, 20:00):",
@@ -222,7 +231,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
       if (scheduleAction.step === "lunch_start") {
         let lunchStart = "";
         if (text && text.trim() !== "-") {
-          if (!/^\d{2}:\d{2}$/.test(text || "")) {
+          if (!validateTimeStr(text || "")) {
             await adapter.reply(
               ctx,
               'Некорректный формат времени. Укажите время в формате HH:MM или "-" если без обеда:',
@@ -252,7 +261,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
         const lunchStart = scheduleAction.lunchStart;
         let lunchEnd = "";
         if (text && text.trim() !== "-") {
-          if (!/^\d{2}:\d{2}$/.test(text || "")) {
+          if (!validateTimeStr(text || "")) {
             await adapter.reply(
               ctx,
               "Некорректный формат времени. Укажите время окончания обеда в формате HH:MM:",
@@ -304,7 +313,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
             { attachments: [buildScheduleMenuKeyboard()] },
           );
         } catch (e) {
-          await adapter.reply(ctx, `Ошибка при сохранении расписания: ${e.message || e}`);
+          await adapter.reply(ctx, `Ошибка при сохранении расписания: ${sanitizeErrorMessage(e)}`);
         }
         delete ctx.session.scheduleAction;
         return true;
@@ -337,7 +346,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
               { attachments: [buildScheduleMenuKeyboard()] },
             );
           } catch (e) {
-            await adapter.reply(ctx, `Ошибка при удалении шаблона: ${e.message || e}`);
+            await adapter.reply(ctx, `Ошибка при удалении шаблона: ${sanitizeErrorMessage(e)}`);
           }
           delete ctx.session.scheduleAction;
           return true;
@@ -353,7 +362,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
       }
 
       if (scheduleAction.step === "weekday_start") {
-        if (!/^\d{2}:\d{2}$/.test(text || "")) {
+        if (!validateTimeStr(text || "")) {
           await adapter.reply(
             ctx,
             "Некорректный формат времени. Укажите время в формате HH:MM:",
@@ -370,7 +379,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
       }
 
       if (scheduleAction.step === "weekday_end") {
-        if (!/^\d{2}:\d{2}$/.test(text || "")) {
+        if (!validateTimeStr(text || "")) {
           await adapter.reply(
             ctx,
             "Некорректный формат времени. Укажите время в формате HH:MM:",
@@ -389,7 +398,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
       if (scheduleAction.step === "weekday_lunch_start") {
         let lunchStart = "";
         if (text && text.trim() !== "-") {
-          if (!/^\d{2}:\d{2}$/.test(text || "")) {
+          if (!validateTimeStr(text || "")) {
             await adapter.reply(
               ctx,
               'Некорректный формат времени. Укажите время в формате HH:MM или "-" если без обеда:',
@@ -424,7 +433,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
       }
 
       if (scheduleAction.step === "weekday_lunch_end") {
-        if (!/^\d{2}:\d{2}$/.test(text || "")) {
+        if (!validateTimeStr(text || "")) {
           await adapter.reply(
             ctx,
             "Некорректный формат времени. Укажите время окончания обеда в формате HH:MM:",
@@ -473,7 +482,7 @@ function createScheduleHandlers({ adapter, sheetsService }) {
             { attachments: [buildScheduleMenuKeyboard()] },
           );
         } catch (e) {
-          await adapter.reply(ctx, `Ошибка при сохранении шаблона: ${e.message || e}`);
+          await adapter.reply(ctx, `Ошибка при сохранении шаблона: ${sanitizeErrorMessage(e)}`);
         }
         delete ctx.session.scheduleAction;
         return true;

@@ -5,6 +5,7 @@ const {
   getUserId,
   getMessageText,
   getMessageImageRef,
+  guardCallback,
   isAdminMode,
 } = require("./helpers");
 const { buildServicesMenuKeyboard } = require("./keyboards");
@@ -40,6 +41,7 @@ function registerAdminHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action(/^admin:(.+)/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     if (!h.checkAdmin(ctx)) return;
     if (!isAdminMode(ctx)) return;
     const action = ctx.update?.callback?.payload?.slice("admin:".length);
@@ -48,6 +50,7 @@ function registerAdminHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action(/^revenue:(.+)/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     if (!h.checkAdmin(ctx) || !isAdminMode(ctx)) return;
     await adapter.answerCallback(ctx);
     const period = ctx.update?.callback?.payload?.slice("revenue:".length);
@@ -56,6 +59,7 @@ function registerAdminHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action(/^service_edit:(.+)/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     if (!h.checkAdmin(ctx) || !isAdminMode(ctx)) return;
     const key = ctx.update?.callback?.payload?.slice("service_edit:".length);
     if (!key) return;
@@ -63,6 +67,7 @@ function registerAdminHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action(/^service_field:(.+)/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     if (!h.checkAdmin(ctx) || !isAdminMode(ctx)) return;
     const field = ctx.update?.callback?.payload?.slice("service_field:".length);
     if (!field) return;
@@ -70,6 +75,7 @@ function registerAdminHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action(/^service_delete:(.+)/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     if (!h.checkAdmin(ctx) || !isAdminMode(ctx)) return;
     const key = ctx.update?.callback?.payload?.slice("service_delete:".length);
     if (!key) return;
@@ -77,6 +83,7 @@ function registerAdminHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.action("service_cancel", async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) return;
     if (!h.checkAdmin(ctx) || !isAdminMode(ctx)) return;
     await adapter.answerCallback(ctx);
     h.clearAdminScenario(ctx);

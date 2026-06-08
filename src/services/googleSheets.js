@@ -3,7 +3,37 @@
 
 const { google } = require("googleapis");
 const dayjs = require("dayjs");
-const { sanitizeSheetsInput } = require("../utils/security");
+const {
+  sanitizeSheetsInput,
+  hasFormulaInjectionPattern,
+  validateTelegramId,
+  validateAppointmentId,
+  validateDateStr,
+  validateCancelCode,
+} = require("../utils/security");
+const { logSecurityEvent } = require("../utils/logger");
+
+/**
+ * Безопасное значение ячейки Google Sheets с логированием formula injection.
+ * @param {*} value
+ * @param {number} [maxLength=500]
+ * @param {object} [context]
+ * @returns {string|number|boolean}
+ */
+function safeCellValue(value, maxLength = 500, context = {}) {
+  if (value == null) return "";
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  const str = String(value);
+  if (hasFormulaInjectionPattern(str)) {
+    logSecurityEvent(
+      context.userId || "system",
+      "formula_injection_attempt",
+      { field: context.field, preview: str.substring(0, 30) },
+      "WARNING",
+    ).catch(() => {});
+  }
+  return sanitizeSheetsInput(str, maxLength);
+}
 const utc = require("dayjs/plugin/utc");
 const timezonePlugin = require("dayjs/plugin/timezone");
 const cron = require("node-cron");
@@ -823,7 +853,7 @@ async function createSheetsService(config) {
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[message.trim()]] },
+        requestBody: { values: [[safeCellValue(message, 2000, { field: "28day_message" })]] },
       });
     } else {
       // Добавляем новую запись
@@ -832,7 +862,9 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["напоминание_28день_текст", message.trim()]] },
+        requestBody: {
+          values: [["напоминание_28день_текст", safeCellValue(message, 2000, { field: "28day_message" })]],
+        },
       });
     }
 
@@ -897,7 +929,7 @@ async function createSheetsService(config) {
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[trimmedLink]] },
+        requestBody: { values: [[safeCellValue(trimmedLink, 500, { field: "tips_link" })]] },
       });
     } else {
       // Добавляем новую запись
@@ -906,7 +938,9 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["ссылка_на_чаевые", trimmedLink]] },
+        requestBody: {
+          values: [["ссылка_на_чаевые", safeCellValue(trimmedLink, 500, { field: "tips_link" })]],
+        },
       });
     }
 
@@ -961,7 +995,7 @@ async function createSheetsService(config) {
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[json]] },
+        requestBody: { values: [[safeCellValue(json, 5000, { field: "portfolio" })]] },
       });
     } else {
       await sheets.spreadsheets.values.append({
@@ -969,7 +1003,9 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["портфолио_фото", json]] },
+        requestBody: {
+          values: [["портфолио_фото", safeCellValue(json, 5000, { field: "portfolio" })]],
+        },
       });
     }
 
@@ -1060,7 +1096,9 @@ async function createSheetsService(config) {
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[trimmedLink]] },
+        requestBody: {
+          values: [[safeCellValue(trimmedLink, 500, { field: "location_link" })]],
+        },
       });
     } else {
       await sheets.spreadsheets.values.append({
@@ -1068,7 +1106,9 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["ссылка_на_локацию", trimmedLink]] },
+        requestBody: {
+          values: [["ссылка_на_локацию", safeCellValue(trimmedLink, 500, { field: "location_link" })]],
+        },
       });
     }
 
@@ -1123,7 +1163,9 @@ async function createSheetsService(config) {
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[trimmedLink]] },
+        requestBody: {
+          values: [[safeCellValue(trimmedLink, 500, { field: "location_2gis" })]],
+        },
       });
     } else {
       await sheets.spreadsheets.values.append({
@@ -1131,7 +1173,9 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["ссылка_на_2гис", trimmedLink]] },
+        requestBody: {
+          values: [["ссылка_на_2гис", safeCellValue(trimmedLink, 500, { field: "location_2gis" })]],
+        },
       });
     }
 
@@ -1181,7 +1225,9 @@ async function createSheetsService(config) {
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[trimmedPhone]] },
+        requestBody: {
+          values: [[safeCellValue(trimmedPhone, 50, { field: "barber_phone" })]],
+        },
       });
     } else {
       // Добавляем новую запись
@@ -1190,7 +1236,9 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["телефон_мастера", trimmedPhone]] },
+        requestBody: {
+          values: [["телефон_мастера", safeCellValue(trimmedPhone, 50, { field: "barber_phone" })]],
+        },
       });
     }
 
@@ -1234,7 +1282,9 @@ async function createSheetsService(config) {
         spreadsheetId: config.google.sheetsId,
         range: `${SHEET_NAMES.SETTINGS}!B${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[trimmedAddress]] },
+        requestBody: {
+          values: [[safeCellValue(trimmedAddress, 500, { field: "barber_address" })]],
+        },
       });
     } else {
       // Добавляем новую запись
@@ -1243,7 +1293,9 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.SETTINGS}!A2:B2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [["адрес_мастера", trimmedAddress]] },
+        requestBody: {
+          values: [["адрес_мастера", safeCellValue(trimmedAddress, 500, { field: "barber_address" })]],
+        },
       });
     }
 
@@ -1392,6 +1444,9 @@ async function createSheetsService(config) {
   }
 
   async function getDaySchedule(dateStr, { fresh = false } = {}) {
+    if (!validateDateStr(dateStr)) {
+      return { schedule: [], appointments: [] };
+    }
     // Комментарий: используем кэш (если не запрошен свежий результат)
     const now = Date.now();
     if (!fresh) {
@@ -1526,18 +1581,18 @@ async function createSheetsService(config) {
       requestBody: {
         values: [
           [
-            id,
+            safeCellValue(id, 50, { field: "appointment_id" }),
             createdAtUtc,
-            service,
+            safeCellValue(service, 100, { field: "service" }),
             price !== null && price !== undefined ? String(price) : "",
             date,
             timeStart,
             timeEnd,
-            sanitizeSheetsInput(clientName),
-            sanitizeSheetsInput(phone),
-            sanitizeSheetsInput(username || ""),
-            sanitizeSheetsInput(comment || ""),
-            status || "активна",
+            safeCellValue(clientName, 50, { field: "clientName" }),
+            safeCellValue(phone, 20, { field: "phone" }),
+            safeCellValue(username || "", 50, { field: "username" }),
+            safeCellValue(comment || "", 200, { field: "comment" }),
+            safeCellValue(status || "активна", 30, { field: "status" }),
             cancelCode,
             String(telegramId || ""),
             "", // Исполнено_UTC - пусто при создании
@@ -1687,9 +1742,9 @@ async function createSheetsService(config) {
               clientId,
               firstSeenUtc,
               String(telegramId),
-              sanitizeSheetsInput(username || ""),
-              sanitizeSheetsInput(name || ""),
-              sanitizeSheetsInput(phone || ""),
+              safeCellValue(username || ""),
+              safeCellValue(name || ""),
+              safeCellValue(phone || ""),
               lastAppointmentAtUtc || "",
               1,
               "", // BanStatus
@@ -1710,9 +1765,9 @@ async function createSheetsService(config) {
         rowValues.push("");
       }
 
-      rowValues[3] = sanitizeSheetsInput(username || rowValues[3] || "");
-      rowValues[4] = sanitizeSheetsInput(name || rowValues[4] || "");
-      rowValues[5] = sanitizeSheetsInput(phone || rowValues[5] || "");
+      rowValues[3] = safeCellValue(username || rowValues[3] || "");
+      rowValues[4] = safeCellValue(name || rowValues[4] || "");
+      rowValues[5] = safeCellValue(phone || rowValues[5] || "");
       rowValues[6] = lastAppointmentAtUtc || rowValues[6] || "";
       rowValues[7] = existingTotal + 1;
       // Напоминание_28день_UTC (индекс 10) не обновляем при upsert
@@ -1730,6 +1785,9 @@ async function createSheetsService(config) {
   }
 
   async function getFutureAppointmentsForTelegram(telegramId, timezone) {
+    if (!validateTelegramId(telegramId)) {
+      return [];
+    }
     // Комментарий: читаем только из активных записей (уменьшенный диапазон)
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
@@ -1788,6 +1846,9 @@ async function createSheetsService(config) {
   }
 
   async function getAppointmentsByDate(dateStr) {
+    if (!validateDateStr(dateStr)) {
+      return [];
+    }
     // Комментарий: читаем только из активных записей (уменьшенный диапазон)
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
@@ -1886,6 +1947,9 @@ async function createSheetsService(config) {
   }
 
   async function getAppointmentById(id) {
+    if (!validateAppointmentId(String(id || ""))) {
+      return null;
+    }
     // Комментарий: ищем одну конкретную запись по id (сначала в активных, потом в архиве)
     // Сначала ищем в активных записях
     const activeRes = await sheets.spreadsheets.values.get({
@@ -1923,6 +1987,9 @@ async function createSheetsService(config) {
   }
 
   async function getAppointmentByCancelCode(cancelCode) {
+    if (!validateCancelCode(String(cancelCode || ""))) {
+      return null;
+    }
     // Комментарий: ищем запись по коду отмены (сначала в активных, потом в архиве)
     // Сначала ищем в активных записях
     const activeRes = await sheets.spreadsheets.values.get({
@@ -2148,6 +2215,9 @@ async function createSheetsService(config) {
   }
 
   async function getClientByTelegramId(telegramId) {
+    if (!validateTelegramId(telegramId)) {
+      return null;
+    }
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
       range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
@@ -2178,6 +2248,9 @@ async function createSheetsService(config) {
   }
 
   async function setUserBanStatus(telegramId, banned, reason = "") {
+    if (!validateTelegramId(telegramId)) {
+      throw new Error("Invalid telegramId");
+    }
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
       range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
@@ -2206,7 +2279,7 @@ async function createSheetsService(config) {
         range: `${SHEET_NAMES.CLIENTS}!I${rowNumber}:J${rowNumber}`,
         valueInputOption: "RAW",
         requestBody: {
-          values: [[banValue, sanitizeSheetsInput(reason || "")]],
+          values: [[banValue, safeCellValue(reason || "")]],
         },
       });
     }

@@ -13,6 +13,10 @@ const { createCalendarService } = require("./src/services/googleCalendar");
 const { createBookingService } = require("./src/services/booking");
 const { setupReminders } = require("./src/services/reminders");
 const { rateLimiter } = require("./src/middleware/rateLimiter");
+const { callbackValidator } = require("./src/middleware/callbackValidator");
+const { messageSizeLimiter } = require("./src/middleware/messageSizeLimiter");
+const { setCriticalAlertHandler } = require("./src/utils/logger");
+const { schedule } = require("./src/utils/apiRateLimiter");
 const servicesService = require("./src/services/services");
 
 /**
@@ -128,8 +132,17 @@ async function main() {
     calendarService,
   });
 
+  setCriticalAlertHandler(async (managerId, message) => {
+    if (!config.managerChatId) return;
+    await schedule(() =>
+      bot.api.sendMessageToUser(Number(config.managerChatId), message),
+    );
+  });
+
   bot.use(maxSession());
+  bot.use(callbackValidator);
   bot.use(rateLimiter);
+  bot.use(messageSizeLimiter);
 
   bot.on("message_created", async (ctx, next) => {
     console.log(

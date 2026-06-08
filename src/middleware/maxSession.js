@@ -6,20 +6,22 @@
 const fs = require("fs");
 const path = require("path");
 const { validateDataSize } = require("../utils/security");
-const { persistChatId, readChatIdFromUpdate } = require("../utils/maxChat");
+const { persistChatId, readChatIdFromUpdate, resolveChatId } = require("../utils/maxChat");
+const { logSecurityEvent } = require("../utils/logger");
 
 const DEFAULT_DATABASE = path.resolve(process.cwd(), "sessions.json");
 
 /**
- * Один ключ на пользователя: в DM у message_created часто нет chat_id,
- * а старый ключ userId:userId не совпадал с userId:realChatId после bot_started.
+ * Ключ сессии: userId:chatId (при наличии chat_id) или userId.
+ * Усложняет session hijacking при утечке только user_id.
  */
 function getSessionKey(ctx) {
   const userId = ctx.user?.user_id;
   if (userId == null) {
     return null;
   }
-  return String(userId);
+  const chatId = resolveChatId(ctx);
+  return chatId != null ? `${userId}:${chatId}` : String(userId);
 }
 
 /**
@@ -195,12 +197,13 @@ function maxSession(options = {}) {
     }
 
     const store = loadStore(database);
+    const userId = ctx.user?.user_id;
     let entry = store.sessions.find((s) => s.id === key);
-    if (!entry) {
-      const userId = ctx.user?.user_id;
-      if (userId != null) {
-        entry = findLegacyUserSession(store, userId);
-      }
+    if (!entry && userId != null) {
+      entry = store.sessions.find((s) => s.id === String(userId));
+    }
+    if (!entry && userId != null) {
+      entry = findLegacyUserSession(store, userId);
     }
 
     ctx.session = entry?.data ? { ...entry.data } : {};
@@ -211,6 +214,23 @@ function maxSession(options = {}) {
     }
 
     persistChatId(ctx);
+
+    const currentChatId = resolveChatId(ctx);
+    if (
+      currentChatId != null &&
+      ctx.session.maxChatId != null &&
+      Number(ctx.session.maxChatId) !== Number(currentChatId)
+    ) {
+      await logSecurityEvent(
+        ctx.user?.user_id ?? "unknown",
+        "session_hijack_attempt",
+        {
+          storedChatId: ctx.session.maxChatId,
+          currentChatId,
+        },
+        "CRITICAL",
+      );
+    }
 
     await next();
 
@@ -225,7 +245,6 @@ function maxSession(options = {}) {
     }
 
     const storeAfter = loadStore(database);
-    const userId = ctx.user?.user_id;
     if (userId != null) {
       removeLegacyUserSessions(storeAfter, userId);
     }

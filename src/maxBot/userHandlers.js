@@ -2,9 +2,13 @@
  * Обработчики пользовательского меню для MAX Bot.
  */
 
-const { Keyboard } = require("@maxhub/max-bot-api");
+const { Keyboard, ImageAttachment } = require("@maxhub/max-bot-api");
 const { formatDate } = require("../utils/formatDate");
-const { validateAppointmentId } = require("../utils/security");
+const {
+  validateAppointmentId,
+  sanitizeDisplayName,
+  validateSafeUrl,
+} = require("../utils/security");
 const { logAction } = require("../utils/logger");
 const { safeSendMessage } = require("../utils/safeMessaging");
 const { createShowUserMainMenu } = require("./showUserMainMenu");
@@ -14,8 +18,8 @@ function getUserId(ctx) {
 }
 
 function getDisplayName(ctx) {
-  const name = ctx.user?.name?.trim();
-  if (name) {
+  const name = sanitizeDisplayName(ctx.user?.name || "");
+  if (name && name !== "Пользователь") {
     return name.split(/\s+/)[0];
   }
   return "друг";
@@ -48,7 +52,7 @@ async function sendPortfolio(ctx, sheetsService, adapter) {
   const raw = (await sheetsService.getPortfolioFileIds()) || [];
   const urls = raw
     .map((item) => String(item).trim())
-    .filter((url) => /^https?:\/\//i.test(url))
+    .filter((url) => validateSafeUrl(url))
     .slice(0, 6);
 
   if (!urls.length) {
@@ -57,7 +61,11 @@ async function sendPortfolio(ctx, sheetsService, adapter) {
 
   for (const photoUrl of urls) {
     try {
-      const image = await ctx.api.uploadImage({ url: photoUrl });
+      const uploaded = adapter
+        ? await adapter.uploadImage({ url: photoUrl })
+        : await ctx.api.uploadImage({ url: photoUrl });
+      if (!uploaded?.token) continue;
+      const image = new ImageAttachment({ token: uploaded.token });
       if (adapter) {
         await adapter.reply(ctx, " ", { attachments: [image.toJson()] });
       } else {

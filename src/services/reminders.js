@@ -7,6 +7,7 @@ const timezonePlugin = require("dayjs/plugin/timezone");
 const { createBookingService } = require("./booking");
 const { cleanupSessionsFile } = require("../middleware/maxSession");
 const { formatDate } = require("../utils/formatDate");
+const { schedule } = require("../utils/apiRateLimiter");
 
 dayjs.extend(utc);
 dayjs.extend(timezonePlugin);
@@ -40,10 +41,12 @@ async function sendMessageToUser(bot, userId, text, options = {}) {
   }
 
   try {
-    return await bot.api.sendMessageToUser(
-      Number(userId),
-      text,
-      toMaxSendOptions(options),
+    return await schedule(() =>
+      bot.api.sendMessageToUser(
+        Number(userId),
+        text,
+        toMaxSendOptions(options),
+      ),
     );
   } catch (err) {
     const code = err?.status ?? err?.response?.error_code;

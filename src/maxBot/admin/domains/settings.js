@@ -1,6 +1,14 @@
 const adminService = require("../../../services/admin");
-const { validateTelegramId, sanitizeText } = require("../../../utils/security");
+const {
+  validateTelegramId,
+  sanitizeText,
+  validatePhone,
+  validateSafeUrl,
+  validateImageAttachment,
+} = require("../../../utils/security");
+const { getMessageImageAttachment } = require("../helpers");
 const { logCriticalAction, logAdminAction, logError } = require("../../../utils/logger");
+const { sanitizeErrorMessage } = require("../../../utils/errorHandler");
 const { getUserId } = require("../helpers");
 const { buildSettingsMenuKeyboard } = require("../keyboards");
 
@@ -30,7 +38,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         `Текущий текст напоминания:\n\n${currentMessage}\n\nОтправьте новый текст. Используйте {clientName} для подстановки имени клиента.\nДля отмены напишите /admin_cancel`,
       );
     } catch (err) {
-      await adapter.reply(ctx, `Ошибка при получении текущего сообщения: ${err.message}`);
+      await adapter.reply(ctx, `Ошибка при получении текущего сообщения: ${sanitizeErrorMessage(err)}`);
     }
   };
 
@@ -45,7 +53,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         }\n\nОтправьте новую ссылку (http://, https://, t.me/) или номер телефона.\nДля отмены напишите /admin_cancel`,
       );
     } catch (err) {
-      await adapter.reply(ctx, `Ошибка при получении данных: ${err.message}`);
+      await adapter.reply(ctx, `Ошибка при получении данных: ${sanitizeErrorMessage(err)}`);
     }
   };
 
@@ -65,7 +73,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     } catch (err) {
       await adapter.reply(
         ctx,
-        `Ошибка при получении текущих контактов: ${err.message}`,
+        `Ошибка при получении текущих контактов: ${sanitizeErrorMessage(err)}`,
       );
     }
   };
@@ -113,7 +121,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         `Отправьте номер фото для удаления: 1..${best.length}.\nДля отмены напишите /admin_cancel`,
       );
     } catch (e) {
-      await adapter.reply(ctx, `Ошибка при получении портфолио: ${e.message || e}`);
+      await adapter.reply(ctx, `Ошибка при получении портфолио: ${sanitizeErrorMessage(e)}`);
     }
   };
 
@@ -126,7 +134,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         `Текущая ссылка на локацию:\n${current || "не установлена"}\n\nПришлите новую ссылку на маршрут (http:// или https://).\nДля отмены напишите /admin_cancel`,
       );
     } catch (e) {
-      await adapter.reply(ctx, `Ошибка при получении локации: ${e.message || e}`);
+      await adapter.reply(ctx, `Ошибка при получении локации: ${sanitizeErrorMessage(e)}`);
     }
   };
 
@@ -231,7 +239,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
       } catch (err) {
         await adapter.reply(
           ctx,
-          `Ошибка при сохранении текста: ${err.message}\n/admin_cancel для отмены.`,
+          `Ошибка при сохранении текста: ${sanitizeErrorMessage(err)}\n/admin_cancel для отмены.`,
         );
         await logError(userId, "admin_edit_28day_reminder", err, {});
         return true;
@@ -241,17 +249,16 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     }
 
     if (action === "edit_tips_link") {
-      const trimmedInput = text.trim();
+      const trimmedInput = sanitizeText(text.trim(), 500);
       if (!trimmedInput) {
         await adapter.reply(ctx, "Данные не могут быть пустыми. /admin_cancel для отмены.");
         return true;
       }
-      const isValidUrl =
-        trimmedInput.startsWith("http://") ||
-        trimmedInput.startsWith("https://") ||
-        trimmedInput.startsWith("t.me/");
-      const isPhoneNumber =
-        /^[\d\s\-+()]+$/.test(trimmedInput) && trimmedInput.length >= 5;
+      const isValidUrl = validateSafeUrl(trimmedInput);
+      const normalizedPhone = trimmedInput.replace(/[\s\-()]/g, "");
+      const isPhoneNumber = validatePhone(
+        normalizedPhone.startsWith("+") ? normalizedPhone : `+${normalizedPhone}`,
+      );
 
       if (!isValidUrl && !isPhoneNumber) {
         await adapter.reply(
@@ -278,7 +285,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
       } catch (err) {
         await adapter.reply(
           ctx,
-          `Ошибка при сохранении: ${err.message}\n/admin_cancel для отмены.`,
+          `Ошибка при сохранении: ${sanitizeErrorMessage(err)}\n/admin_cancel для отмены.`,
         );
         await logError(userId, "admin_edit_tips_link", err, {});
         return true;
@@ -301,11 +308,16 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         return true;
       }
 
-      const phone = lines[0];
-      const address = lines.slice(1).join(" ");
+      const phoneRaw = lines[0];
+      const addressRaw = lines.slice(1).join(" ");
+      const phoneNormalized = phoneRaw.replace(/[\s\-()]/g, "");
+      const phone = phoneNormalized.startsWith("+")
+        ? phoneNormalized
+        : `+${phoneNormalized}`;
+      const address = sanitizeText(addressRaw, 500);
 
-      if (!phone?.trim()) {
-        await adapter.reply(ctx, "Телефон не может быть пустым. /admin_cancel для отмены.");
+      if (!validatePhone(phone)) {
+        await adapter.reply(ctx, "Некорректный телефон. /admin_cancel для отмены.");
         return true;
       }
       if (!address?.trim()) {
@@ -314,8 +326,8 @@ function createSettingsHandlers({ adapter, sheetsService }) {
       }
 
       try {
-        await sheetsService.setBarberPhone(phone.trim());
-        await sheetsService.setBarberAddress(address.trim());
+        await sheetsService.setBarberPhone(phone);
+        await sheetsService.setBarberAddress(address);
         logAdminAction(
           userId,
           "admin_edit_contacts",
@@ -327,13 +339,13 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         );
         await adapter.reply(
           ctx,
-          `Контакты успешно обновлены!\n\n📞 Телефон: ${phone.trim()}\n📍 Адрес: ${address.trim()}`,
+          `Контакты успешно обновлены!\n\n📞 Телефон: ${phone}\n📍 Адрес: ${address}`,
           { attachments: [buildSettingsMenuKeyboard()] },
         );
       } catch (err) {
         await adapter.reply(
           ctx,
-          `Ошибка при сохранении контактов: ${err.message}\n/admin_cancel для отмены.`,
+          `Ошибка при сохранении контактов: ${sanitizeErrorMessage(err)}\n/admin_cancel для отмены.`,
         );
         await logError(userId, "admin_edit_contacts", err, {});
         return true;
@@ -374,7 +386,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         );
         delete ctx.session.adminAction;
       } catch (e) {
-        await adapter.reply(ctx, `Ошибка при удалении фото: ${e.message || e}`);
+        await adapter.reply(ctx, `Ошибка при удалении фото: ${sanitizeErrorMessage(e)}`);
       }
       return true;
     }
@@ -385,10 +397,10 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         await adapter.reply(ctx, "Ссылка не может быть пустой. /admin_cancel для отмены.");
         return true;
       }
-      if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+      if (!validateSafeUrl(trimmed)) {
         await adapter.reply(
           ctx,
-          "Ссылка должна начинаться с http:// или https://. /admin_cancel для отмены.",
+          "Ссылка должна начинаться с http://, https:// или t.me/. /admin_cancel для отмены.",
         );
         return true;
       }
@@ -399,7 +411,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         });
         delete ctx.session.adminAction;
       } catch (e) {
-        await adapter.reply(ctx, `Ошибка при сохранении локации: ${e.message || e}`);
+        await adapter.reply(ctx, `Ошибка при сохранении локации: ${sanitizeErrorMessage(e)}`);
       }
       return true;
     }
@@ -411,6 +423,18 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     const action = ctx.session?.adminAction?.type;
     if (action !== "portfolio_upload" || !imageRef) return false;
 
+    const attachment = getMessageImageAttachment(ctx);
+    if (attachment) {
+      const validation = validateImageAttachment(attachment);
+      if (!validation.valid) {
+        await adapter.reply(
+          ctx,
+          "Недопустимое изображение. Разрешены JPEG/PNG/WebP до 10 МБ.",
+        );
+        return true;
+      }
+    }
+
     try {
       await sheetsService.addPortfolioFileId(imageRef);
       await adapter.reply(ctx, "✅ Фото добавлено в портфолио.", {
@@ -419,7 +443,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     } catch (e) {
       await adapter.reply(
         ctx,
-        `Ошибка при сохранении фото в портфолио: ${e.message || e}`,
+        `Ошибка при сохранении фото в портфолио: ${sanitizeErrorMessage(e)}`,
       );
     }
     delete ctx.session.adminAction;

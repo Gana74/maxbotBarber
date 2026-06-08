@@ -7,6 +7,39 @@ const {
   getAllServices,
   getServiceByKey: getServiceByKeyFromFile,
 } = require("./services");
+const {
+  validateName,
+  validatePhone,
+  sanitizeText,
+  validateServiceKey,
+  validateDateStr,
+  validateTimeStr,
+} = require("../utils/security");
+const { logSecurityEvent } = require("../utils/logger");
+
+const GLOBAL_BOOKING_LIMIT = 10;
+const GLOBAL_BOOKING_WINDOW_MS = 60 * 1000;
+const MAX_BOOKINGS_PER_DAY = 4;
+const globalBookingTimestamps = [];
+
+/**
+ * Глобальный лимит создания записей (защита от ботнет-атак).
+ * @returns {boolean}
+ */
+function checkGlobalBookingLimit() {
+  const now = Date.now();
+  while (
+    globalBookingTimestamps.length > 0 &&
+    globalBookingTimestamps[0] < now - GLOBAL_BOOKING_WINDOW_MS
+  ) {
+    globalBookingTimestamps.shift();
+  }
+  if (globalBookingTimestamps.length >= GLOBAL_BOOKING_LIMIT) {
+    return false;
+  }
+  globalBookingTimestamps.push(now);
+  return true;
+}
 
 dayjs.extend(utc);
 dayjs.extend(timezonePlugin);
@@ -213,6 +246,38 @@ function createBookingService({ sheetsService, config, calendarService }) {
     client,
     comment,
   }) {
+    if (!checkGlobalBookingLimit()) {
+      await logSecurityEvent(
+        "system",
+        "global_booking_limit_exceeded",
+        { limit: GLOBAL_BOOKING_LIMIT, windowMs: GLOBAL_BOOKING_WINDOW_MS },
+        "CRITICAL",
+      );
+      return { ok: false, reason: "global_limit" };
+    }
+
+    if (!validateServiceKey(serviceKey)) {
+      return { ok: false, reason: "invalid_service" };
+    }
+    if (!validateDateStr(dateStr)) {
+      return { ok: false, reason: "invalid_date" };
+    }
+    if (!validateTimeStr(timeStr)) {
+      return { ok: false, reason: "invalid_time" };
+    }
+
+    if (
+      !client ||
+      !validateName(client.name, 1, 50) ||
+      !validatePhone(client.phone)
+    ) {
+      return { ok: false, reason: "invalid_client" };
+    }
+
+    const sanitizedComment = comment
+      ? sanitizeText(String(comment), 200)
+      : "";
+
     const service = getServiceByKey(serviceKey);
     if (!service) {
       throw new Error(`Unknown service key: ${serviceKey}`);
@@ -236,6 +301,41 @@ function createBookingService({ sheetsService, config, calendarService }) {
     }
 
     const timezone = await sheetsService.getTimezone();
+
+    // Не более 4 новых записей за календарный день (в TZ салона)
+    try {
+      if (
+        client.telegramId &&
+        sheetsService.getAllAppointmentsForClient
+      ) {
+        const clientAppointments =
+          await sheetsService.getAllAppointmentsForClient(client.telegramId);
+        const todayStr = dayjs().tz(timezone).format("YYYY-MM-DD");
+        const createdToday = clientAppointments.filter((a) => {
+          if (!a.createdAtUtc) {
+            return false;
+          }
+          return (
+            dayjs(a.createdAtUtc).tz(timezone).format("YYYY-MM-DD") ===
+            todayStr
+          );
+        });
+
+        if (createdToday.length >= MAX_BOOKINGS_PER_DAY) {
+          return {
+            ok: false,
+            reason: "daily_limit_exceeded",
+            existingCount: createdToday.length,
+          };
+        }
+      }
+    } catch (e) {
+      console.error(
+        "Ошибка при проверке дневного лимита записей:",
+        e.message || e,
+      );
+    }
+
     // Проверяем рабочие часы дня
     const workHours =
       (sheetsService.getWorkHoursForDate &&
@@ -319,10 +419,10 @@ function createBookingService({ sheetsService, config, calendarService }) {
       date: dateStr,
       timeStart: start.format("HH:mm"),
       timeEnd: end.format("HH:mm"),
-      clientName: client.name,
-      phone: client.phone,
+      clientName: client.name.trim(),
+      phone: client.phone.trim(),
       username: client.username || "",
-      comment: comment || "",
+      comment: sanitizedComment,
       status: STATUSES.ACTIVE,
       cancelCode,
       telegramId: client.telegramId,

@@ -1,53 +1,40 @@
 // Rate Limiting Middleware для MAX Bot API
-// Оптимизация памяти: TTL cleanup, LRU eviction, ограничение размера Map
+
+const { isBookingStepActive } = require("../maxBot/constants");
+const { logSecurityEvent } = require("../utils/logger");
 
 const MAX_MAP_SIZE = 5000;
-const CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 минут
-const INACTIVE_THRESHOLD = 10 * 60 * 1000; // 10 минут
+const CLEANUP_INTERVAL = 5 * 60 * 1000;
+const INACTIVE_THRESHOLD = 10 * 60 * 1000;
 
-// Map для хранения запросов пользователей
 const userRequests = new Map();
 let cleanupTimer = null;
 
-// Лимиты по умолчанию (запросов в минуту)
 const DEFAULT_LIMITS = {
   general: 30,
   admin: 10,
+  scene: 15,
 };
 
-/**
- * ID пользователя из контекста MAX.
- * @param {object} ctx
- * @returns {string|number|null}
- */
+const BUCKET_TYPES = ["general", "admin", "scene"];
+
+function createEmptyBuckets() {
+  return { general: [], admin: [], scene: [] };
+}
+
 function getUserIdFromCtx(ctx) {
   const id = ctx?.user?.user_id;
   return id != null ? id : null;
 }
 
-/**
- * Текст сообщения из контекста MAX.
- * @param {object} ctx
- * @returns {string}
- */
 function getMessageText(ctx) {
   return ctx.message?.body?.text?.trim() ?? "";
 }
 
-/**
- * Payload callback-кнопки из контекста MAX.
- * @param {object} ctx
- * @returns {string}
- */
 function getCallbackPayload(ctx) {
   return ctx.update?.callback?.payload ?? "";
 }
 
-/**
- * Админский контекст: команда /admin, другие admin-команды или admin-callback.
- * @param {object} ctx
- * @returns {boolean}
- */
 function isAdminContext(ctx) {
   const text = getMessageText(ctx);
   if (text === "/admin" || text.startsWith("/admin_")) {
@@ -62,9 +49,6 @@ function isAdminContext(ctx) {
   return false;
 }
 
-/**
- * Очистка неактивных пользователей и старых записей
- */
 function cleanup() {
   const now = Date.now();
   const toDelete = [];
@@ -106,11 +90,10 @@ function stopCleanupTimer() {
 }
 
 /**
- * Проверка rate limit для пользователя
- * @param {string|number} userId - ID пользователя
- * @param {string} type - Тип запроса: 'general' | 'admin'
- * @param {number} [limit] - Лимит запросов в минуту (опционально)
- * @returns {boolean} - true если лимит не превышен
+ * @param {string|number} userId
+ * @param {'general'|'admin'|'scene'} type
+ * @param {number|null} [limit]
+ * @returns {boolean}
  */
 function checkRateLimit(userId, type = "general", limit = null) {
   const userIdStr = String(userId);
@@ -121,23 +104,28 @@ function checkRateLimit(userId, type = "general", limit = null) {
   let entry = userRequests.get(userIdStr);
   if (!entry) {
     entry = {
-      requests: [],
+      buckets: createEmptyBuckets(),
       lastAccess: now,
     };
     userRequests.set(userIdStr, entry);
   }
 
+  if (!entry.buckets) {
+    entry.buckets = createEmptyBuckets();
+  }
+
   entry.lastAccess = now;
 
-  entry.requests = entry.requests.filter(
+  const bucket = entry.buckets[type] || (entry.buckets[type] = []);
+  entry.buckets[type] = bucket.filter(
     (timestamp) => now - timestamp < windowMs,
   );
 
-  if (entry.requests.length >= actualLimit) {
+  if (entry.buckets[type].length >= actualLimit) {
     return false;
   }
 
-  entry.requests.push(now);
+  entry.buckets[type].push(now);
 
   if (userRequests.size >= MAX_MAP_SIZE) {
     cleanup();
@@ -147,27 +135,27 @@ function checkRateLimit(userId, type = "general", limit = null) {
 }
 
 /**
- * Определяет тип лимита: admin (10/мин) или general (30/мин).
  * @param {object} ctx
- * @returns {'general' | 'admin'}
+ * @returns {'general' | 'admin' | 'scene'}
  */
 function resolveLimitType(ctx) {
   if (isAdminContext(ctx)) {
     return "admin";
   }
+  if (
+    ctx.session?.flow === "booking" &&
+    isBookingStepActive(ctx.session)
+  ) {
+    return "scene";
+  }
   return "general";
 }
 
-/**
- * @param {object} [options]
- * @param {number} [options.generalLimit] - Лимит для общих запросов (по умолчанию 30/мин)
- * @param {number} [options.adminLimit] - Лимит для админ-команд (по умолчанию 10/мин)
- * @returns {(ctx: object, next: Function) => Promise<void>}
- */
 function createRateLimiter(options = {}) {
   const limits = {
     general: options.generalLimit ?? DEFAULT_LIMITS.general,
     admin: options.adminLimit ?? DEFAULT_LIMITS.admin,
+    scene: options.sceneLimit ?? DEFAULT_LIMITS.scene,
   };
 
   startCleanupTimer();
@@ -182,6 +170,13 @@ function createRateLimiter(options = {}) {
     const allowed = checkRateLimit(userId, type, limits[type]);
 
     if (!allowed) {
+      await logSecurityEvent(
+        userId,
+        "rate_limit_exceeded",
+        { limitType: type, limit: limits[type] },
+        "WARNING",
+      );
+
       try {
         if (typeof ctx.reply === "function") {
           await ctx.reply(
@@ -189,7 +184,7 @@ function createRateLimiter(options = {}) {
           );
         }
       } catch {
-        // Игнорируем ошибки отправки сообщения
+        // ignore
       }
       return;
     }
@@ -198,7 +193,6 @@ function createRateLimiter(options = {}) {
   };
 }
 
-/** Готовый middleware для bot.use(rateLimiter) */
 const rateLimiter = createRateLimiter();
 
 process.on("SIGINT", () => {
@@ -218,4 +212,6 @@ module.exports = {
   cleanup,
   getUserIdFromCtx,
   isAdminContext,
+  DEFAULT_LIMITS,
+  BUCKET_TYPES,
 };

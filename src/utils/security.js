@@ -1,6 +1,23 @@
 // Утилиты безопасности: валидация и санитизация входных данных
 // Включает LRU кэш для оптимизации производительности
 
+const dayjs = require("dayjs");
+const customParseFormat = require("dayjs/plugin/customParseFormat");
+
+dayjs.extend(customParseFormat);
+
+/** Максимальный возраст callback (10 минут). */
+const CALLBACK_MAX_AGE_MS = 10 * 60 * 1000;
+
+/** Максимальный размер изображения для портфолио/рассылок (10 МБ). */
+const MAX_IMAGE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
 // Простая реализация LRU кэша для кэширования результатов валидации
 class LRUCache {
   constructor(maxSize = 100) {
@@ -12,7 +29,6 @@ class LRUCache {
     if (!this.cache.has(key)) {
       return null;
     }
-    // Перемещаем в конец (самый недавно использованный)
     const value = this.cache.get(key);
     this.cache.delete(key);
     this.cache.set(key, value);
@@ -23,7 +39,6 @@ class LRUCache {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.maxSize) {
-      // Удаляем самый старый элемент (первый в Map)
       const firstKey = this.cache.keys().next().value;
       this.cache.delete(firstKey);
     }
@@ -35,13 +50,12 @@ class LRUCache {
   }
 }
 
-// LRU кэш для результатов валидации (100 записей)
 const validationCache = new LRUCache(100);
 
 /**
- * Валидация Telegram ID
- * @param {string|number} id - Telegram ID для валидации
- * @returns {boolean} - true если валиден
+ * Валидация Telegram / MAX user ID.
+ * @param {string|number} id
+ * @returns {boolean}
  */
 function validateTelegramId(id) {
   if (id === null || id === undefined) return false;
@@ -53,7 +67,6 @@ function validateTelegramId(id) {
   }
 
   const idStr = String(id).trim();
-  // Telegram ID: только цифры, длина от 1 до 15 символов
   const isValid = /^\d{1,15}$/.test(idStr);
 
   validationCache.set(cacheKey, isValid);
@@ -61,9 +74,9 @@ function validateTelegramId(id) {
 }
 
 /**
- * Валидация телефонного номера
- * @param {string} phone - Номер телефона
- * @returns {boolean} - true если валиден
+ * Валидация телефонного номера.
+ * @param {string} phone
+ * @returns {boolean}
  */
 function validatePhone(phone) {
   if (!phone || typeof phone !== "string") return false;
@@ -75,7 +88,6 @@ function validatePhone(phone) {
   }
 
   const phoneStr = phone.trim();
-  // Телефон: начинается с +, затем цифры, длина 10-15 символов после +
   const isValid = /^\+?\d{10,15}$/.test(phoneStr);
 
   validationCache.set(cacheKey, isValid);
@@ -83,16 +95,15 @@ function validatePhone(phone) {
 }
 
 /**
- * Валидация имени
- * @param {string} name - Имя для валидации
- * @param {number} minLength - Минимальная длина (по умолчанию 1)
- * @param {number} maxLength - Максимальная длина (по умолчанию 50)
- * @returns {boolean} - true если валидно
+ * Валидация имени.
+ * @param {string} name
+ * @param {number} [minLength=1]
+ * @param {number} [maxLength=50]
+ * @returns {boolean}
  */
 function validateName(name, minLength = 1, maxLength = 50) {
   if (!name || typeof name !== "string") return false;
 
-  // Ранний выход: проверка длины перед regex
   const trimmed = name.trim();
   if (trimmed.length < minLength || trimmed.length > maxLength) {
     return false;
@@ -104,8 +115,6 @@ function validateName(name, minLength = 1, maxLength = 50) {
     return cached;
   }
 
-  // Имя: буквы (включая кириллицу и латиницу), пробелы, дефисы, апострофы
-  // Защита от XSS: запрещаем HTML-теги и спецсимволы
   const isValid = /^[\p{L}\s\-']+$/u.test(trimmed);
 
   validationCache.set(cacheKey, isValid);
@@ -113,21 +122,19 @@ function validateName(name, minLength = 1, maxLength = 50) {
 }
 
 /**
- * Санитизация текста для защиты от XSS
- * @param {string} text - Текст для санитизации
- * @param {number} maxLength - Максимальная длина (по умолчанию 500)
- * @returns {string} - Санитизированный текст
+ * Санитизация текста для защиты от XSS.
+ * @param {string} text
+ * @param {number} [maxLength=500]
+ * @returns {string}
  */
 function sanitizeText(text, maxLength = 500) {
   if (!text || typeof text !== "string") return "";
 
-  // Ограничение длины (ранний выход)
-  let sanitized = text.trim();
+  let sanitized = text.trim().replace(/\x00/g, "");
   if (sanitized.length > maxLength) {
     sanitized = sanitized.substring(0, maxLength);
   }
 
-  // Экранирование HTML-спецсимволов для защиты от XSS
   sanitized = sanitized
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -140,9 +147,27 @@ function sanitizeText(text, maxLength = 500) {
 }
 
 /**
- * Валидация ID записи
- * @param {string} id - ID записи для валидации
- * @returns {boolean} - true если валиден
+ * Безопасное отображение имени: валидация + минимальное экранирование.
+ * @param {string} name
+ * @param {number} [maxLength=50]
+ * @returns {string}
+ */
+function sanitizeDisplayName(name, maxLength = 50) {
+  if (!name || typeof name !== "string") return "";
+  const trimmed = name.trim().substring(0, maxLength);
+  if (!validateName(trimmed, 1, maxLength)) {
+    return "Пользователь";
+  }
+  return trimmed
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Валидация ID записи.
+ * @param {string} id
+ * @returns {boolean}
  */
 function validateAppointmentId(id) {
   if (!id || typeof id !== "string") return false;
@@ -154,8 +179,6 @@ function validateAppointmentId(id) {
   }
 
   const idStr = id.trim();
-  // ID записи: буквы, цифры и подчёркивания, длина от 1 до 50 символов
-  // Формат по генератору: "A_xxxxxx_xxxxxx"
   const isValid = /^[A-Za-z0-9_]{1,50}$/.test(idStr);
 
   validationCache.set(cacheKey, isValid);
@@ -163,10 +186,172 @@ function validateAppointmentId(id) {
 }
 
 /**
- * Валидация размера данных (для защиты от DoS)
- * @param {any} data - Данные для проверки
- * @param {number} maxSizeKB - Максимальный размер в KB (по умолчанию 10)
- * @returns {boolean} - true если размер допустим
+ * Валидация ключа услуги.
+ * @param {string} key
+ * @returns {boolean}
+ */
+function validateServiceKey(key) {
+  if (!key || typeof key !== "string") return false;
+  return /^[A-Za-z0-9_]{1,50}$/.test(key.trim());
+}
+
+/**
+ * Валидация времени HH:MM.
+ * @param {string} time
+ * @returns {boolean}
+ */
+function validateTimeStr(time) {
+  if (!time || typeof time !== "string") return false;
+  const trimmed = time.trim();
+  if (!/^\d{2}:\d{2}$/.test(trimmed)) return false;
+  const [h, m] = trimmed.split(":").map(Number);
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+}
+
+/**
+ * Валидация даты YYYY-MM-DD или DD.MM.YYYY.
+ * @param {string} date
+ * @returns {boolean}
+ */
+function validateDateStr(date) {
+  if (!date || typeof date !== "string") return false;
+  const trimmed = date.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return dayjs(trimmed, "YYYY-MM-DD", true).isValid();
+  }
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+    return dayjs(trimmed, "DD.MM.YYYY", true).isValid();
+  }
+  return false;
+}
+
+/**
+ * Валидация безопасного URL.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function validateSafeUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim().toLowerCase();
+  if (trimmed.startsWith("javascript:") || trimmed.startsWith("data:")) {
+    return false;
+  }
+  return (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("t.me/")
+  );
+}
+
+/**
+ * Валидация кода отмены (6 символов A-Z0-9).
+ * @param {string} code
+ * @returns {boolean}
+ */
+function validateCancelCode(code) {
+  if (!code || typeof code !== "string") return false;
+  return /^[A-Z0-9]{6}$/.test(code.trim().toUpperCase());
+}
+
+/**
+ * Извлечение и валидация суффикса callback payload.
+ * @param {string} payload
+ * @param {string} prefix — например "service_edit:"
+ * @param {(value: string) => boolean} [validateSuffix]
+ * @returns {string|null}
+ */
+function parseCallbackPayload(payload, prefix, validateSuffix) {
+  if (!payload || typeof payload !== "string") return null;
+  if (!payload.startsWith(prefix)) return null;
+  const suffix = payload.slice(prefix.length);
+  if (!suffix) return null;
+  if (validateSuffix && !validateSuffix(suffix)) return null;
+  return suffix;
+}
+
+/**
+ * Проверка актуальности callback по timestamp из Update MAX API.
+ * @param {object} ctx — контекст MAX Bot
+ * @returns {{ valid: boolean, reason?: string }}
+ */
+function validateCallbackTimestamp(ctx) {
+  const timestamp = ctx?.update?.timestamp;
+  if (timestamp == null) {
+    return { valid: true };
+  }
+
+  const ts =
+    typeof timestamp === "number" ? timestamp : Number(timestamp);
+  if (!Number.isFinite(ts) || ts <= 0) {
+    return { valid: false, reason: "invalid_timestamp" };
+  }
+
+  const age = Date.now() - ts;
+  if (age > CALLBACK_MAX_AGE_MS) {
+    return { valid: false, reason: "callback_expired" };
+  }
+  if (age < -60_000) {
+    return { valid: false, reason: "callback_future" };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Валидация вложения-изображения (размер и MIME).
+ * @param {object} attachment — элемент из ctx.message.body.attachments
+ * @returns {{ valid: boolean, reason?: string }}
+ */
+function validateImageAttachment(attachment) {
+  if (!attachment || typeof attachment !== "object") {
+    return { valid: false, reason: "missing_attachment" };
+  }
+
+  const type = String(attachment.type || "").toLowerCase();
+  if (type && type !== "image") {
+    return { valid: false, reason: "not_image" };
+  }
+
+  const payload = attachment.payload || attachment;
+  const mime =
+    payload?.mime_type ||
+    payload?.mimeType ||
+    payload?.content_type ||
+    attachment.mime_type;
+
+  if (mime && !ALLOWED_IMAGE_MIME_TYPES.has(String(mime).toLowerCase())) {
+    return { valid: false, reason: "invalid_mime" };
+  }
+
+  const size =
+    payload?.size ??
+    payload?.file_size ??
+    payload?.fileSize ??
+    attachment.size;
+
+  if (size != null && Number(size) > MAX_IMAGE_ATTACHMENT_BYTES) {
+    return { valid: false, reason: "file_too_large" };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Проверяет, содержит ли строка потенциальную formula injection.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function hasFormulaInjectionPattern(text) {
+  if (!text || typeof text !== "string") return false;
+  const trimmed = text.trim();
+  return /^[=+\-@\t\r|]/.test(trimmed);
+}
+
+/**
+ * Валидация размера данных (защита от DoS).
+ * @param {any} data
+ * @param {number} [maxSizeKB=10]
+ * @returns {boolean}
  */
 function validateDataSize(data, maxSizeKB = 10) {
   try {
@@ -180,10 +365,9 @@ function validateDataSize(data, maxSizeKB = 10) {
 }
 
 /**
- * Санитизация текста перед записью в Google Sheets (защита от formula injection).
- * Если строка начинается с =, +, - или @, добавляется апостроф в начало.
- * @param {string} text - Текст для записи в таблицу
- * @param {number} [maxLength=500] - Максимальная длина
+ * Санитизация текста перед записью в Google Sheets (formula injection).
+ * @param {string} text
+ * @param {number} [maxLength=500]
  * @returns {string}
  */
 function sanitizeSheetsInput(text, maxLength = 500) {
@@ -191,12 +375,12 @@ function sanitizeSheetsInput(text, maxLength = 500) {
     return "";
   }
 
-  let sanitized = text.trim();
+  let sanitized = text.trim().replace(/\x00/g, "");
   if (sanitized.length > maxLength) {
     sanitized = sanitized.substring(0, maxLength);
   }
 
-  if (/^[=+\-@]/.test(sanitized)) {
+  if (/^[=+\-@\t\r|]/.test(sanitized)) {
     sanitized = `'${sanitized}`;
   }
 
@@ -204,19 +388,31 @@ function sanitizeSheetsInput(text, maxLength = 500) {
 }
 
 /**
- * Очистка кэша валидации (для тестирования или при необходимости)
+ * Очистка кэша валидации.
  */
 function clearValidationCache() {
   validationCache.clear();
 }
 
 module.exports = {
+  CALLBACK_MAX_AGE_MS,
+  MAX_IMAGE_ATTACHMENT_BYTES,
   validateTelegramId,
   validatePhone,
   validateName,
   sanitizeText,
+  sanitizeDisplayName,
   sanitizeSheetsInput,
   validateAppointmentId,
+  validateServiceKey,
+  validateTimeStr,
+  validateDateStr,
+  validateSafeUrl,
+  validateCancelCode,
+  parseCallbackPayload,
+  validateCallbackTimestamp,
+  validateImageAttachment,
+  hasFormulaInjectionPattern,
   validateDataSize,
   clearValidationCache,
 };
