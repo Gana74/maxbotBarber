@@ -1,0 +1,7 @@
+node_modules/
+.env
+credentials.json
+sessions.json
+banned.json
+security.log
+ src/bot_telegram_LEGACY/

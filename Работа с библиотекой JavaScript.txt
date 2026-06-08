@@ -1,0 +1,307 @@
+Работа с библиотекой JavaScript
+Если вы пишете ботов на TypeScript или JavaScript, рекомендуем использовать нашу официальную библиотеку MAX Bot API. Расширенную версию библиотеки с примерами реализации смотрите на GitHub
+
+В этом разделе разберём, как подключить библиотеку MAX Bot API и эффективно использовать стандартные методы и утилиты, которыми она располагает
+
+Установка MAX Bot API
+Чтобы установить библиотеку MAX Bot API, зарегистрируйте бота на платформе и подключитесь к API MAX — следуйте подсказкам в разделе «Подготовка и настройка бота»
+
+Все примеры в этом разделе написаны на JavaScript с переменными окружения в Node.js
+
+1. Создайте новый проект в терминале и установите библиотеку для своего менеджера пакетов. Используйте скрипт curl или wget
+
+BASH
+# Создайте папку и перейдите в неё
+mkdir my-first-bot
+cd my-first-bot
+
+# Установите MAX Bot API
+
+# Для npm
+npm install --save @maxhub/max-bot-api
+# Для yarn
+yarn add @maxhub/max-bot-api
+# Для pnpm
+pnpm add @maxhub/max-bot-api
+# Для deno
+deno add npm:@maxhub/max-bot-api
+
+# Установите и настройте TypeScript (опционально)
+yarn add -D typescript
+npx tsc --init
+2. Создайте файл. Для JavaScript — bot.js, для TypeScript — bot.ts
+
+3. Создайте экземпляр класса Bot и передайте токен бота из его настроек (карточки) в конструктор через переменные окружения. Можно использовать библиотеку dotenv
+
+JS
+import { Bot } from '@maxhub/max-bot-api';
+
+// Создайте экземпляр класса Bot и передайте ему токен 
+const bot = new Bot(process.env.BOT_TOKEN);
+
+// Добавьте слушатели обновлений
+// MAX Bot API будет вызывать их, когда пользователи взаимодействуют с ботом
+
+// Обработчик для команды '/start'
+bot.command('start', (ctx) => ctx.reply('Добро пожаловать!'));
+
+// Обработчик для любого другого сообщения
+bot.on('message_created', (ctx) => ctx.reply('Новое сообщение'));
+
+// Теперь можно запустить бота, чтобы он подключился к серверам MAX и ждал обновлений
+bot.start();
+bot.js
+4. Запустите бота
+
+BASH
+# Скомпилируйте код, если вы использовали TypeScript
+npx tsc
+
+# Передайте переменную окружения и запустите бота
+BOT_TOKEN="<your_token_here>" node bot.js
+Работа с обновлениями
+После запуска вы начнёте получать обновления от MAX — следите за подсказками в редакторе кода. MAX Bot API позволяет прослушивать эти обновления
+
+JS
+// Обработчик начала диалога с ботом
+bot.on('bot_started', (ctx) => {/* ... */});
+
+// Обработчик новых сообщений (с ним callback в bot.hears работать не будет)
+bot.on('message_created', (ctx) => {/* ... */});
+
+// Обработчик удаления сообщения (с ним callback в bot.hears работать не будет)
+bot.on('message_removed', (ctx) => {/* ... */});
+
+// Обработчик редактирования сообщения (с ним callback в bot.hears работать не будет)
+bot.on('message_edited', (ctx) => {/* ... */});
+
+// Обработчик добавления бота в чат (с ним callback в bot.hears работать не будет)
+bot.on('bot_added', (ctx) => {/* ... */});
+
+// Обработчик удаления бота из чата (с ним callback в bot.hears работать не будет)
+bot.on('bot_removed', (ctx) => {/* ... */});
+
+// Обработчик добавления пользователя в беседу
+bot.on('user_added', (ctx) => {/* ... */});
+
+// Обработчик удаления пользователя из беседы
+bot.on('user_removed', (ctx) => {/* ... */});
+
+// Обработчик изменения названия беседы
+bot.on('chat_title_changed', (ctx) => {/* ... */});
+
+// Обработчик callback-сообщения
+bot.on('message_callback', (ctx) => {/* ... */});
+Входящие сообщения
+Вы можете подписаться на обновления message_created
+
+JS
+bot.on('message_created', (ctx) => {
+  const message = ctx.message; // Полученное сообщение
+});
+Или воспользуйтесь специальными методами
+
+JS
+// Обработчик команды '/start'
+bot.command('start', async (ctx) => {/* ... */});
+
+// Сравнение текста сообщения со строкой или регулярным выражением
+bot.hears('hello', async (ctx) => {/* ... */});
+bot.hears(/echo (.+)?/, async (ctx) => {/* ... */});
+
+// Обработчик нажатия на callback-кнопку с указанным payload
+bot.action('connect_wallet', async (ctx) => {/* ... */});
+bot.action(/color:(.+)/, async (ctx) => {/* ... */});
+Исходящие сообщения
+Воспользуйтесь методами из bot.api
+
+JS
+// Отправить сообщение пользователю с id=12345
+await bot.api.sendMessageToUser(12345, "Привет!");
+// Опционально можно передать дополнительные параметры
+await bot.api.sendMessageToUser(12345, "Привет!", {/* доп. параметры */});
+
+// Отправить сообщение в чат с id=54321
+await bot.api.sendMessageToChat(54321, "Всем привет!");
+
+// Получить отправленное сообщение
+const message = await bot.api.sendMessageToUser(12345, "Привет!");
+console.log(message.body.mid);
+ℹ️ Если MAX Bot API не поддерживает какой-то метод, вызовите его через ctx.api.raw
+
+Форматы методов Raw API
+
+JS
+ctx.api.raw.get('method', {/* параметры запроса */});
+ctx.api.raw.post('method', {/* параметры запроса */});
+ctx.api.raw.put('method', {/* параметры запроса */});
+ctx.api.raw.patch('method', {/* параметры запроса */});
+ctx.api.raw.delete('method', {/* параметры запроса */});
+
+// Вызов метода редактирования чата с id=123
+await ctx.api.raw.patch('chats/{chat_id}', {  
+    path: { chat_id: 123 }, // Параметры ссылки
+    body: { title: 'New Title' }, // Тело запроса
+    query: { notify: false }, // Параметры поиска
+});
+Можно обратиться к методу контекста reply
+
+JS
+bot.hears('ping', async (ctx) => {
+    // 'reply' — псевдоним метода 'ctx.api.sendMessageToChat' в этом же чате
+    await ctx.reply('pong', {
+        // 'link' прикрепляет оригинальное сообщение
+        link: { type: 'reply', mid: ctx.message.body.mid },
+    });
+});
+Форматирование сообщений
+Чтобы выделить в сообщениях важную информацию, используйте разные способы оформления текста — жирный шрифт, курсив, ссылки и другое. Есть два типа форматирования — Markdown и HTML. Подробнее — в разделе API о способах форматирования
+
+Markdown
+
+JS
+await bot.api.sendMessageToChat(
+  12345,
+  '**Привет!** _Добро пожаловать_ в [MAX](https://dev.max.ru).',
+  { format: 'markdown' },
+);
+HTML
+
+JS
+await bot.api.sendMessageToChat(
+  12345,
+  '<b>Привет!</b> <i>Добро пожаловать</i> в <a href="https://dev.max.ru">MAX</a>.',
+  { format: 'html' },
+);
+Отправка вложений
+Упростите работу с вложениями классом Attachment. Благодаря функции toJson объект вложения будет возвращаться отформатированным
+
+Файлы
+
+С помощью токена — для файлов, которые уже загружены в MAX
+JS
+const image = new ImageAttachment({ token: 'existingImageToken' });
+await ctx.reply('', { attachments: [image.toJson()] });
+
+const video = new VideoAttachment({ token: 'existingVideoToken' });
+await ctx.reply('', { attachments: [video.toJson()] });
+
+const audio = new AudioAttachment({ token: 'existingAudioToken' });
+await ctx.reply('', { attachments: [audio.toJson()] });
+
+const file = new FileAttachment({ token: 'existingFileToken' });
+await ctx.reply('', { attachments: [file.toJson()] });
+Чтобы загрузить файлы на серверы MAX, воспользуйтесь методом ctx.api
+
+uploadImage
+uploadVideo
+uploadAudio
+uploadFile
+Загруженные файлы возвращают экземпляр класса Attachment
+
+JS
+const image = await ctx.api.uploadImage({ source: '/path/to/image' });
+await ctx.reply('Это фото загружено из файла', {
+  attachments: [image.toJson()],
+});
+С помощью ссылки — доступно только для изображений
+JS
+const image = await ctx.api.uploadImage({ url: 'https://upload.wikimedia.org/wikipedia/commons/7/72/Maxmessenger.png' });
+await ctx.reply('', { attachments: [image.toJson()] });
+Другие типы вложений
+
+JS
+const sticker = new StickerAttachment({ code: "stickerCode" });
+await ctx.reply('', { attachments: [sticker.toJson()] });
+
+const location = new LocationAttachment({ lon: 0, lat: 0 });
+await ctx.reply('', { attachments: [location.toJson()] });
+
+const share = new ShareAttachment({ url: "messagePublicUrl", token: "attachmentToken" });
+await ctx.reply('', { attachments: [share.toJson()] });
+Клавиатура
+Клавиатура отображается в сообщениях бота и похожа на пульт управления. Пользователям не нужно печатать ответ на запрос, достаточно нажать на кнопку. Параметры и оформление клавиатуры можно настроить — используйте KeyboardBuilder
+
+TYPESCRIPT
+const keyboard = Keyboard.inlineKeyboard([
+  // Первая строка с тремя кнопками
+  [
+    Keyboard.button.callback('default'),
+    Keyboard.button.callback('positive', { intent: 'positive' }),
+    Keyboard.button.callback('negative', { intent: 'negative' }),
+  ], 
+  // Вторая строка с одной кнопкой
+  [Keyboard.button.link('Открыть MAX', 'https://max.ru')],
+]);
+
+// Далее мы можем отправить клавиатуру пользователю в сообщении, например, при вызове команды страт
+bot.command('start', (ctx: Context) => {
+  ctx.reply('Добро пожаловать!', {attachments: [keyboard]})
+});
+Параметры клавиатуры по умолчанию
+
+Чтобы клавиатура оставалась удобной для пользователей, рекомендуем заранее продумать её наполнение и учитывать следующие параметры:
+
+Текст на кнопке выравнивается по центру и обрезается, если выходит за её границы
+Кнопки в одной строке должны быть одинаковой ширины
+Ширина каждого ряда кнопок равна ширине клавиатуры
+Высота у всех кнопок по умолчанию одинаковая
+Inline-клавиатура
+
+Такая клавиатура может иметь до 210 кнопок, сгруппированных в 30 рядов — до 7 кнопок в каждом (до 3, если это кнопки типа link, open_app, request_geo_location или request_contact). Если ряды кнопок не помещаются в плейсхолдер клавиатуры, автоматически подключается скролл
+
+
+Inline-клавиатура в чат-боте
+
+Типы кнопок
+Кнопки для клавиатуры различаются по типу
+
+CallbackButton
+Информирует сервер о действиях в чат-боте и вызывает обновление message_callback
+
+TYPESCRIPT
+button.callback(text: string, payload: string, extra?: { 
+  intent?: 'default' 
+});
+LinkButton
+Позволяет открыть ссылку в новой вкладке
+
+TYPESCRIPT
+button.link(text: string, url: string);
+RequestContactButton
+Запрашивает разрешение на доступ к контактам телефонной книги, чтобы пользователь мог отправить в чат телефон или ник
+
+TYPESCRIPT
+button.requestContact(text: string);
+RequestGeoLocationButton
+Открывает окно с информацией о местоположении пользователя, чтобы он мог поделиться координатами в чате
+
+TYPESCRIPT
+button.requestGeoLocation(text: string, extra?: { quick?: boolean });
+OpenAppButton
+Открывает мини-приложение
+
+TYPESCRIPT
+button.openApp(text: string, webApp?: string, contactId?: number);
+MessageButton
+Отправляет боту текстовое сообщение
+
+TYPESCRIPT
+button.message(text: string);
+Расширение контекста
+TYPESCRIPT
+interface MyContext extends Context {
+  isAdmin?: boolean;
+}
+const ADMIN_ID = 12345;
+const bot = new Bot<MyContext>(process.env.BOT_TOKEN);
+bot.use(async (ctx, next) => {
+  ctx.isAdmin = ctx.user?.user_id === ADMIN_ID;
+  return next();
+});
+bot.command('start', async (ctx) => {
+  if (ctx.isAdmin) {
+    return ctx.reply('Привет, админ!');
+  }
+  return ctx.reply('Привет!');
+});
