@@ -4,4 +4,4 @@ credentials.json
 sessions.json
 banned.json
 security.log
- src/bot_telegram_LEGACY/
+src/bot_telegram_LEGACY/

@@ -4,22 +4,22 @@ overview: Разбить монолитный `adminHandlers.js` (~2185 стро
 todos:
   - id: extract-stateless
     content: Вынести constants.js, helpers.js, keyboards.js из adminHandlers.js
-    status: pending
+    status: completed
   - id: extract-revenue-bookings-broadcast
     content: Создать domains/revenue.js, bookings.js, broadcast.js с переносом логики как есть
-    status: pending
+    status: completed
   - id: extract-services-settings-schedule
     content: Создать domains/services.js, settings.js, schedule.js
-    status: pending
+    status: completed
   - id: extract-core-compose
     content: Создать domains/core.js, createAdminHandlers.js — композиция и action map
-    status: pending
+    status: completed
   - id: extract-register-facade
     content: Вынести registerAdminHandlers.js, сделать adminHandlers.js тонким фасадом
-    status: pending
+    status: completed
   - id: smoke-test
     content: node --check + ручной smoke-test по чеклисту MASTER.md
-    status: pending
+    status: completed
 isProject: false
 ---
 
