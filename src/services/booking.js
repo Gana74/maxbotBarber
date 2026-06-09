@@ -421,7 +421,6 @@ function createBookingService({ sheetsService, config, calendarService }) {
       timeEnd: end.format("HH:mm"),
       clientName: client.name.trim(),
       phone: client.phone.trim(),
-      username: client.username || "",
       comment: sanitizedComment,
       status: STATUSES.ACTIVE,
       cancelCode,
@@ -433,7 +432,6 @@ function createBookingService({ sheetsService, config, calendarService }) {
     // Обновляем/создаём клиента
     await sheetsService.upsertClient({
       telegramId: client.telegramId,
-      username: client.username,
       name: client.name,
       phone: client.phone,
       lastAppointmentAtUtc: createdAtUtc,

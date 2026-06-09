@@ -740,7 +740,7 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
         `Время: ${appointment.timeStart}–${appointment.timeEnd}`,
         `Клиент: ${appointment.clientName}`,
         `Телефон: ${appointment.phone}`,
-        `MAX: @${appointment.username || "нет"}`,
+        `MAX ID: ${appointment.telegramId || "нет"}`,
         `Комментарий: ${appointment.comment || "нет"}`,
         `Код отмены: ${appointment.cancelCode}`,
       ].join("\n");

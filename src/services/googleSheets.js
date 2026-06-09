@@ -64,7 +64,7 @@ const SHEET_NAMES = {
 
 // Комментарий: константы для архивирования
 const ARCHIVE_MONTHS = 2; // период хранения активных записей (месяцев)
-const ACTIVE_RANGE = "A2:Q500"; // уменьшенный диапазон для активных записей
+const ACTIVE_RANGE = "A2:O500"; // уменьшенный диапазон для активных записей
 
 // Комментарий: заголовки на русском
 const HEADERS = {
@@ -87,11 +87,10 @@ const HEADERS = {
     "Время_окончания",
     "Имя_клиента",
     "Телефон",
-    "Username_Telegram",
     "Комментарий",
     "Статус",
     "Код_отмены",
-    "Telegram_ID",
+    "Max_ID",
     "Исполнено_UTC",
     "Отменено_UTC",
   ],
@@ -105,19 +104,17 @@ const HEADERS = {
     "Время_окончания",
     "Имя_клиента",
     "Телефон",
-    "Username_Telegram",
     "Комментарий",
     "Статус",
     "Код_отмены",
-    "Telegram_ID",
+    "Max_ID",
     "Исполнено_UTC",
     "Отменено_UTC",
   ],
   [SHEET_NAMES.CLIENTS]: [
     "ID_клиента",
     "Первое_посещение_UTC",
-    "Telegram_ID",
-    "Username_Telegram",
+    "Max_ID",
     "Имя",
     "Телефон",
     "Последняя_запись_UTC",
@@ -137,7 +134,7 @@ const HEADERS = {
   ],
   [SHEET_NAMES.TWO_HOUR_CONFIRMATIONS]: [
     "ID_записи",
-    "Telegram_ID",
+    "Max_ID",
     "Напоминание_отправлено_UTC",
     "Дедлайн_UTC",
     "Статус",
@@ -179,11 +176,10 @@ async function createSheetsService(config) {
       Время_окончания,
       Имя_клиента,
       Телефон,
-      Username_Telegram,
       Комментарий,
       Статус,
       Код_отмены,
-      Telegram_ID,
+      Max_ID,
       Исполнено_UTC,
       Отменено_UTC,
     ] = row;
@@ -197,11 +193,10 @@ async function createSheetsService(config) {
       timeEnd: Время_окончания,
       clientName: Имя_клиента,
       phone: Телефон,
-      username: Username_Telegram,
       comment: Комментарий,
       status: Статус,
       cancelCode: Код_отмены,
-      telegramId: Telegram_ID,
+      telegramId: Max_ID,
       completedAtUtc: Исполнено_UTC,
       cancelledAtUtc: Отменено_UTC,
     };
@@ -230,7 +225,7 @@ async function createSheetsService(config) {
     try {
       const archiveRes = await sheets.spreadsheets.values.get({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:Q10000`,
+        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:O10000`,
       });
       const archiveRows = archiveRes.data.values || [];
       appointments.push(...archiveRows.map(parseAppointmentRow));
@@ -1378,7 +1373,7 @@ async function createSheetsService(config) {
     try {
       const archiveCheck = await sheets.spreadsheets.values.get({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:Q10`,
+        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:O10`,
       });
       const archiveRows = archiveCheck.data.values || [];
 
@@ -1462,44 +1457,7 @@ async function createSheetsService(config) {
     });
     const appRows = appRes.data.values || [];
     const appointments = appRows
-      .map((row) => {
-        const [
-          ID_записи,
-          Создано_UTC,
-          Услуга,
-          Цена,
-          Дата,
-          Время_начала,
-          Время_окончания,
-          Имя_клиента,
-          Телефон,
-          Username_Telegram,
-          Комментарий,
-          Статус,
-          Код_отмены,
-          Telegram_ID,
-          Исполнено_UTC,
-          Отменено_UTC,
-        ] = row;
-        return {
-          id: ID_записи,
-          createdAtUtc: Создано_UTC,
-          service: Услуга,
-          price: Цена ? (isNaN(Number(Цена)) ? null : Number(Цена)) : null,
-          date: Дата,
-          timeStart: Время_начала,
-          timeEnd: Время_окончания,
-          clientName: Имя_клиента,
-          phone: Телефон,
-          username: Username_Telegram,
-          comment: Комментарий,
-          status: Статус,
-          cancelCode: Код_отмены,
-          telegramId: Telegram_ID,
-          completedAtUtc: Исполнено_UTC,
-          cancelledAtUtc: Отменено_UTC,
-        };
-      })
+      .map(parseAppointmentRow)
       .filter(
         (row) =>
           row.date === dateStr &&
@@ -1535,7 +1493,6 @@ async function createSheetsService(config) {
       timeEnd,
       clientName,
       phone,
-      username,
       comment,
       status,
       cancelCode,
@@ -1544,7 +1501,7 @@ async function createSheetsService(config) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.APPOINTMENTS}!A2:R2`,
+      range: `${SHEET_NAMES.APPOINTMENTS}!A2:O2`,
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
@@ -1559,7 +1516,6 @@ async function createSheetsService(config) {
             timeEnd,
             safeCellValue(clientName, 50, { field: "clientName" }),
             safeCellValue(phone, 20, { field: "phone" }),
-            safeCellValue(username || "", 50, { field: "username" }),
             safeCellValue(comment || "", 200, { field: "comment" }),
             safeCellValue(status || "активна", 30, { field: "status" }),
             cancelCode,
@@ -1604,7 +1560,7 @@ async function createSheetsService(config) {
       try {
         const archiveRes = await sheets.spreadsheets.values.get({
           spreadsheetId: config.google.sheetsId,
-          range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:Q10000`,
+          range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:O10000`,
         });
         const archiveRows = archiveRes.data.values || [];
 
@@ -1632,17 +1588,16 @@ async function createSheetsService(config) {
     const rowNumber = targetRowIndex + 2; // сдвиг из-за заголовков
 
     const rowValues = rows[targetRowIndex];
-    // Статус в колонке L (index 11), Исполнено_UTC в колонке O (index 14), Отменено_UTC в колонке P (index 15)
-    // Telegram_ID в колонке N (index 13)
-    rowValues[11] = status;
+    // Статус (index 10), Max_ID (index 12), Исполнено_UTC (index 13), Отменено_UTC (index 14)
+    rowValues[10] = status;
     if (status === "отменена" && cancelledAtUtc) {
-      rowValues[15] = cancelledAtUtc;
+      rowValues[14] = cancelledAtUtc;
     }
     if (status === "исполнено" && completedAtUtc) {
-      rowValues[14] = completedAtUtc; // Исполнено_UTC
+      rowValues[13] = completedAtUtc; // Исполнено_UTC
 
       // Обновляем lastAppointmentAtUtc в таблице клиентов
-      const telegramId = rowValues[13]; // Telegram_ID
+      const telegramId = rowValues[12]; // Max_ID
       if (telegramId && String(telegramId).trim() !== "") {
         try {
           await upsertClient({
@@ -1661,7 +1616,7 @@ async function createSheetsService(config) {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: config.google.sheetsId,
-      range: `${sheetName}!A${rowNumber}:Q${rowNumber}`,
+      range: `${sheetName}!A${rowNumber}:O${rowNumber}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [rowValues],
@@ -1676,11 +1631,11 @@ async function createSheetsService(config) {
   }
 
   async function upsertClient(client) {
-    const { telegramId, username, name, phone, lastAppointmentAtUtc } = client;
+    const { telegramId, name, phone, lastAppointmentAtUtc } = client;
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
@@ -1688,10 +1643,10 @@ async function createSheetsService(config) {
     let existingTotal = 0;
 
     rows.forEach((row, idx) => {
-      const existingTelegramId = row[2];
+      const existingTelegramId = row[2]; // Max_ID
       if (String(existingTelegramId) === String(telegramId)) {
         targetRowIndex = idx;
-        existingTotal = Number(row[7] || 0);
+        existingTotal = Number(row[6] || 0);
       }
     });
 
@@ -1702,7 +1657,7 @@ async function createSheetsService(config) {
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.CLIENTS}!A2:L2`,
+        range: `${SHEET_NAMES.CLIENTS}!A2:K2`,
         valueInputOption: "RAW",
         insertDataOption: "INSERT_ROWS",
         requestBody: {
@@ -1711,7 +1666,6 @@ async function createSheetsService(config) {
               clientId,
               firstSeenUtc,
               String(telegramId),
-              safeCellValue(username || ""),
               safeCellValue(name || ""),
               safeCellValue(phone || ""),
               lastAppointmentAtUtc || "",
@@ -1730,21 +1684,20 @@ async function createSheetsService(config) {
       const rowValues = rows[targetRowIndex];
 
       // Убедимся, что массив достаточно длинный
-      while (rowValues.length < 12) {
+      while (rowValues.length < 11) {
         rowValues.push("");
       }
 
-      rowValues[3] = safeCellValue(username || rowValues[3] || "");
-      rowValues[4] = safeCellValue(name || rowValues[4] || "");
-      rowValues[5] = safeCellValue(phone || rowValues[5] || "");
-      rowValues[6] = lastAppointmentAtUtc || rowValues[6] || "";
-      rowValues[7] = existingTotal + 1;
-      // Напоминание_28день_UTC (индекс 10) не обновляем при upsert
-      // Последняя_рассылка_UTC (индекс 11) не обновляем при upsert
+      rowValues[3] = safeCellValue(name || rowValues[3] || "");
+      rowValues[4] = safeCellValue(phone || rowValues[4] || "");
+      rowValues[5] = lastAppointmentAtUtc || rowValues[5] || "";
+      rowValues[6] = existingTotal + 1;
+      // Напоминание_28день_UTC (индекс 9) не обновляем при upsert
+      // Последняя_рассылка_UTC (индекс 10) не обновляем при upsert
 
       await sheets.spreadsheets.values.update({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.CLIENTS}!A${rowNumber}:L${rowNumber}`,
+        range: `${SHEET_NAMES.CLIENTS}!A${rowNumber}:K${rowNumber}`,
         valueInputOption: "RAW",
         requestBody: {
           values: [rowValues],
@@ -1767,40 +1720,7 @@ async function createSheetsService(config) {
     const now = dayjs().tz ? dayjs().tz(timezone) : dayjs();
 
     return rows
-      .map((row) => {
-        const [
-          ID_записи,
-          Создано_UTC,
-          Услуга,
-          Цена,
-          Дата,
-          Время_начала,
-          Время_окончания,
-          Имя_клиента,
-          Телефон,
-          Username_Telegram,
-          Комментарий,
-          Статус,
-          Код_отмены,
-          Telegram_ID,
-        ] = row;
-        return {
-          id: ID_записи,
-          createdAtUtc: Создано_UTC,
-          service: Услуга,
-          price: Цена ? (isNaN(Number(Цена)) ? null : Number(Цена)) : null,
-          date: Дата,
-          timeStart: Время_начала,
-          timeEnd: Время_окончания,
-          clientName: Имя_клиента,
-          phone: Телефон,
-          username: Username_Telegram,
-          comment: Комментарий,
-          status: Статус,
-          cancelCode: Код_отмены,
-          telegramId: Telegram_ID,
-        };
-      })
+      .map(parseAppointmentRow)
       .filter(
         (row) =>
           String(row.telegramId) === String(telegramId) &&
@@ -1826,40 +1746,7 @@ async function createSheetsService(config) {
     const rows = res.data.values || [];
 
     return rows
-      .map((row) => {
-        const [
-          ID_записи,
-          Создано_UTC,
-          Услуга,
-          Цена,
-          Дата,
-          Время_начала,
-          Время_окончания,
-          Имя_клиента,
-          Телефон,
-          Username_Telegram,
-          Комментарий,
-          Статус,
-          Код_отмены,
-          Telegram_ID,
-        ] = row;
-        return {
-          id: ID_записи,
-          createdAtUtc: Создано_UTC,
-          service: Услуга,
-          price: Цена ? (isNaN(Number(Цена)) ? null : Number(Цена)) : null,
-          date: Дата,
-          timeStart: Время_начала,
-          timeEnd: Время_окончания,
-          clientName: Имя_клиента,
-          phone: Телефон,
-          username: Username_Telegram,
-          comment: Комментарий,
-          status: Статус,
-          cancelCode: Код_отмены,
-          telegramId: Telegram_ID,
-        };
-      })
+      .map(parseAppointmentRow)
       .filter((row) => row.date === dateStr && row.status === "активна");
   }
 
@@ -1872,44 +1759,7 @@ async function createSheetsService(config) {
     const rows = res.data.values || [];
 
     return rows
-      .map((row) => {
-        const [
-          ID_записи,
-          Создано_UTC,
-          Услуга,
-          Цена,
-          Дата,
-          Время_начала,
-          Время_окончания,
-          Имя_клиента,
-          Телефон,
-          Username_Telegram,
-          Комментарий,
-          Статус,
-          Код_отмены,
-          Telegram_ID,
-          Исполнено_UTC,
-          Отменено_UTC,
-        ] = row;
-        return {
-          id: ID_записи,
-          createdAtUtc: Создано_UTC,
-          service: Услуга,
-          price: Цена ? (isNaN(Number(Цена)) ? null : Number(Цена)) : null,
-          date: Дата,
-          timeStart: Время_начала,
-          timeEnd: Время_окончания,
-          clientName: Имя_клиента,
-          phone: Телефон,
-          username: Username_Telegram,
-          comment: Комментарий,
-          status: Статус,
-          cancelCode: Код_отмены,
-          telegramId: Telegram_ID,
-          completedAtUtc: Исполнено_UTC,
-          cancelledAtUtc: Отменено_UTC,
-        };
-      })
+      .map(parseAppointmentRow)
       .filter(
         (row) => row.status === "активна" && row.id && row.date && row.timeEnd,
       );
@@ -1936,7 +1786,7 @@ async function createSheetsService(config) {
     try {
       const archiveRes = await sheets.spreadsheets.values.get({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:Q10000`,
+        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:O10000`,
       });
       const archiveRows = archiveRes.data.values || [];
       const archiveRow = archiveRows.find((r) => r[0] === id);
@@ -1967,11 +1817,11 @@ async function createSheetsService(config) {
     });
     const activeRows = activeRes.data.values || [];
 
-    // Код отмены находится в колонке с индексом 12 (после добавления колонки Цена)
+    // Код отмены находится в колонке с индексом 11
     const activeRow = activeRows.find(
       (r) =>
-        r[12] &&
-        String(r[12]).toUpperCase() === String(cancelCode).toUpperCase(),
+        r[11] &&
+        String(r[11]).toUpperCase() === String(cancelCode).toUpperCase(),
     );
 
     if (activeRow) {
@@ -1982,13 +1832,13 @@ async function createSheetsService(config) {
     try {
       const archiveRes = await sheets.spreadsheets.values.get({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:Q10000`,
+        range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:O10000`,
       });
       const archiveRows = archiveRes.data.values || [];
       const archiveRow = archiveRows.find(
         (r) =>
-          r[12] &&
-          String(r[12]).toUpperCase() === String(cancelCode).toUpperCase(),
+          r[11] &&
+          String(r[11]).toUpperCase() === String(cancelCode).toUpperCase(),
       );
 
       if (archiveRow) {
@@ -2008,7 +1858,7 @@ async function createSheetsService(config) {
   async function getAllClients() {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
@@ -2016,8 +1866,7 @@ async function createSheetsService(config) {
       const [
         ID_клиента,
         Первое_посещение_UTC,
-        Telegram_ID,
-        Username_Telegram,
+        Max_ID,
         Имя,
         Телефон,
         Последняя_запись_UTC,
@@ -2030,8 +1879,7 @@ async function createSheetsService(config) {
       return {
         id: ID_клиента,
         firstSeenUtc: Первое_посещение_UTC,
-        telegramId: Telegram_ID,
-        username: Username_Telegram,
+        telegramId: Max_ID,
         name: Имя,
         phone: Телефон,
         lastAppointmentAtUtc: Последняя_запись_UTC,
@@ -2094,7 +1942,7 @@ async function createSheetsService(config) {
     // Получаем все клиенты
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
@@ -2102,16 +1950,16 @@ async function createSheetsService(config) {
     const updates = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const telegramId = row[2]; // Telegram_ID в индексе 2
+      const telegramId = row[2]; // Max_ID в индексе 2
 
       if (telegramId && telegramIdsStr.includes(String(telegramId))) {
         const rowNumber = i + 2; // +2 из-за заголовка и сдвига индекса
         // Убедимся, что массив достаточно длинный
-        while (row.length < 12) {
+        while (row.length < 11) {
           row.push("");
         }
-        // Обновляем колонку L (индекс 11) - Последняя_рассылка_UTC
-        row[11] = now;
+        // Обновляем колонку K (индекс 10) - Последняя_рассылка_UTC
+        row[10] = now;
         updates.push({ rowNumber, row });
       }
     }
@@ -2125,8 +1973,8 @@ async function createSheetsService(config) {
             sheetId: undefined, // Используется имя листа в range
             startRowIndex: rowNumber - 1,
             endRowIndex: rowNumber,
-            startColumnIndex: 11, // Колонка L (индекс 11)
-            endColumnIndex: 12,
+            startColumnIndex: 10, // Колонка K (индекс 10)
+            endColumnIndex: 11,
           },
           values: [[now]],
           fields: "userEnteredValue",
@@ -2137,7 +1985,7 @@ async function createSheetsService(config) {
       for (const { rowNumber } of batch) {
         await sheets.spreadsheets.values.update({
           spreadsheetId: config.google.sheetsId,
-          range: `${SHEET_NAMES.CLIENTS}!L${rowNumber}`,
+          range: `${SHEET_NAMES.CLIENTS}!K${rowNumber}`,
           valueInputOption: "RAW",
           requestBody: {
             values: [[now]],
@@ -2153,7 +2001,7 @@ async function createSheetsService(config) {
     // Комментарий: очищает все метки рассылки (для cron задачи)
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
@@ -2161,8 +2009,8 @@ async function createSheetsService(config) {
     const rowsToClear = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      // Проверяем, что метка заполнена (индекс 11)
-      if (row.length > 11 && row[11] && row[11].trim() !== "") {
+      // Проверяем, что метка заполнена (индекс 10)
+      if (row.length > 10 && row[10] && row[10].trim() !== "") {
         const rowNumber = i + 2;
         rowsToClear.push(rowNumber);
       }
@@ -2172,7 +2020,7 @@ async function createSheetsService(config) {
     for (const rowNumber of rowsToClear) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.CLIENTS}!L${rowNumber}`,
+        range: `${SHEET_NAMES.CLIENTS}!K${rowNumber}`,
         valueInputOption: "RAW",
         requestBody: {
           values: [[""]],
@@ -2189,14 +2037,14 @@ async function createSheetsService(config) {
     }
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
     let targetRowIndex = -1;
     let targetRow = null;
     rows.forEach((row, idx) => {
-      const existingTelegramId = row[2];
+      const existingTelegramId = row[2]; // Max_ID
       if (String(existingTelegramId) === String(telegramId)) {
         targetRowIndex = idx;
         targetRow = row;
@@ -2211,8 +2059,8 @@ async function createSheetsService(config) {
     const entry = await getClientByTelegramId(telegramId);
     if (!entry) return { banned: false, reason: "" };
     const row = entry.rowValues || [];
-    const ban = String(row[8] || "").toLowerCase() === "banned";
-    const reason = row[9] || "";
+    const ban = String(row[7] || "").toLowerCase() === "banned";
+    const reason = row[8] || "";
     return { banned: ban, reason };
   }
 
@@ -2222,7 +2070,7 @@ async function createSheetsService(config) {
     }
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
@@ -2242,10 +2090,10 @@ async function createSheetsService(config) {
       return true;
     } else {
       const rowNumber = targetRowIndex + 2;
-      // Обновляем только столбцы I (индекс 8) и J (индекс 9) - статус бана и причина
+      // Обновляем только столбцы H (индекс 7) и I (индекс 8) - статус бана и причина
       await sheets.spreadsheets.values.update({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.CLIENTS}!I${rowNumber}:J${rowNumber}`,
+        range: `${SHEET_NAMES.CLIENTS}!H${rowNumber}:I${rowNumber}`,
         valueInputOption: "RAW",
         requestBody: {
           values: [[banValue, safeCellValue(reason || "")]],
@@ -2347,7 +2195,7 @@ async function createSheetsService(config) {
     // Комментарий: помечаем, что напоминание отправлено
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
@@ -2366,10 +2214,10 @@ async function createSheetsService(config) {
     const rowNumber = targetRowIndex + 2;
     const reminderSentAtUtc = dayjs().utc().toISOString();
 
-    // Обновляем только столбец K (индекс 10) - Напоминание_28день_UTC
+    // Обновляем только столбец J (индекс 9) - Напоминание_28день_UTC
     await sheets.spreadsheets.values.update({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!K${rowNumber}`,
+      range: `${SHEET_NAMES.CLIENTS}!J${rowNumber}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [[reminderSentAtUtc]],
@@ -2383,7 +2231,7 @@ async function createSheetsService(config) {
     // Комментарий: очищаем поле напоминания при создании новой записи
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!A2:L2000`,
+      range: `${SHEET_NAMES.CLIENTS}!A2:K2000`,
     });
     const rows = res.data.values || [];
 
@@ -2401,10 +2249,10 @@ async function createSheetsService(config) {
 
     const rowNumber = targetRowIndex + 2;
 
-    // Очищаем столбец K (индекс 10) - Напоминание_28день_UTC
+    // Очищаем столбец J (индекс 9) - Напоминание_28день_UTC
     await sheets.spreadsheets.values.update({
       spreadsheetId: config.google.sheetsId,
-      range: `${SHEET_NAMES.CLIENTS}!K${rowNumber}`,
+      range: `${SHEET_NAMES.CLIENTS}!J${rowNumber}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [[""]],
@@ -2662,7 +2510,7 @@ async function createSheetsService(config) {
       // Читаем все активные записи
       const res = await sheets.spreadsheets.values.get({
         spreadsheetId: config.google.sheetsId,
-        range: `${SHEET_NAMES.APPOINTMENTS}!A2:Q2000`,
+        range: `${SHEET_NAMES.APPOINTMENTS}!A2:O2000`,
       });
       const rows = res.data.values || [];
 
@@ -2722,7 +2570,7 @@ async function createSheetsService(config) {
       if (appointmentsToArchive.length > 0) {
         await sheets.spreadsheets.values.append({
           spreadsheetId: config.google.sheetsId,
-          range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:Q2`,
+          range: `${SHEET_NAMES.APPOINTMENTS_ARCHIVE}!A2:O2`,
           valueInputOption: "RAW",
           insertDataOption: "INSERT_ROWS",
           requestBody: {

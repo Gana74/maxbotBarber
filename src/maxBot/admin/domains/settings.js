@@ -15,7 +15,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     ctx.session.adminAction = { type: "ban" };
     await adapter.reply(
       ctx,
-      "Отправьте Telegram ID или @username пользователя для бана.\nДля отмены напишите /admin_cancel",
+      "Отправьте Max ID (числовой ID пользователя в MAX) для бана.\nДля отмены напишите /admin_cancel",
     );
   };
 
@@ -23,7 +23,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     ctx.session.adminAction = { type: "unban" };
     await adapter.reply(
       ctx,
-      "Отправьте Telegram ID пользователя для разбанивания.\nДля отмены напишите /admin_cancel",
+      "Отправьте Max ID пользователя для разбанивания.\nДля отмены напишите /admin_cancel",
     );
   };
 
@@ -155,21 +155,12 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     const userId = getUserId(ctx);
 
     if (action === "ban") {
-      let telegramId = null;
-      if (text.startsWith("@")) {
-        const clients = await sheetsService.getAllClients();
-        const found = clients.find(
-          (c) => c.username && `@${c.username}` === text,
-        );
-        if (found) telegramId = found.telegramId;
-      } else {
-        telegramId = text;
-      }
+      const telegramId = text;
 
       if (!telegramId || !validateTelegramId(telegramId)) {
         await adapter.reply(
           ctx,
-          "Неверный формат Telegram ID. /admin_cancel для отмены.",
+          "Неверный формат Max ID. /admin_cancel для отмены.",
         );
         return true;
       }
@@ -193,7 +184,7 @@ function createSettingsHandlers({ adapter, sheetsService }) {
       if (!telegramId || !validateTelegramId(telegramId)) {
         await adapter.reply(
           ctx,
-          "Неверный формат Telegram ID. /admin_cancel для отмены.",
+          "Неверный формат Max ID. /admin_cancel для отмены.",
         );
         return true;
       }
