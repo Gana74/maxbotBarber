@@ -1,6 +1,6 @@
 const adminService = require("../../../services/admin");
 const {
-  validateTelegramId,
+  validateMaxUserId,
   sanitizeText,
   validatePhone,
   validateSafeUrl,
@@ -155,9 +155,9 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     const userId = getUserId(ctx);
 
     if (action === "ban") {
-      const telegramId = text;
+      const maxUserId = text;
 
-      if (!telegramId || !validateTelegramId(telegramId)) {
+      if (!maxUserId || !validateMaxUserId(maxUserId)) {
         await adapter.reply(
           ctx,
           "Неверный формат Max ID. /admin_cancel для отмены.",
@@ -165,14 +165,14 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         return true;
       }
 
-      await adminService.banUser(telegramId, "", sheetsService);
+      await adminService.banUser(maxUserId, "", sheetsService);
       logCriticalAction(
         userId,
         "admin_ban_user",
-        { bannedUserId: telegramId, target: text },
+        { bannedUserId: maxUserId, target: text },
         "success",
       );
-      await adapter.reply(ctx, `Пользователь ${telegramId} забанен.`, {
+      await adapter.reply(ctx, `Пользователь ${maxUserId} забанен.`, {
         attachments: [buildSettingsMenuKeyboard()],
       });
       delete ctx.session.adminAction;
@@ -180,8 +180,8 @@ function createSettingsHandlers({ adapter, sheetsService }) {
     }
 
     if (action === "unban") {
-      const telegramId = text;
-      if (!telegramId || !validateTelegramId(telegramId)) {
+      const maxUserId = text;
+      if (!maxUserId || !validateMaxUserId(maxUserId)) {
         await adapter.reply(
           ctx,
           "Неверный формат Max ID. /admin_cancel для отмены.",
@@ -189,14 +189,14 @@ function createSettingsHandlers({ adapter, sheetsService }) {
         return true;
       }
 
-      await adminService.unbanUser(telegramId, sheetsService);
+      await adminService.unbanUser(maxUserId, sheetsService);
       logCriticalAction(
         userId,
         "admin_unban_user",
-        { unbannedUserId: telegramId },
+        { unbannedUserId: maxUserId },
         "success",
       );
-      await adapter.reply(ctx, `Пользователь ${telegramId} разбанен.`, {
+      await adapter.reply(ctx, `Пользователь ${maxUserId} разбанен.`, {
         attachments: [buildSettingsMenuKeyboard()],
       });
       delete ctx.session.adminAction;

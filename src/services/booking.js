@@ -287,11 +287,11 @@ function createBookingService({ sheetsService, config, calendarService }) {
     try {
       if (
         client &&
-        client.telegramId &&
+        client.maxUserId &&
         sheetsService &&
         sheetsService.getUserBanStatus
       ) {
-        const st = await sheetsService.getUserBanStatus(client.telegramId);
+        const st = await sheetsService.getUserBanStatus(client.maxUserId);
         if (st && st.banned) {
           return { ok: false, reason: "banned" };
         }
@@ -305,11 +305,11 @@ function createBookingService({ sheetsService, config, calendarService }) {
     // Не более 4 новых записей за календарный день (в TZ салона)
     try {
       if (
-        client.telegramId &&
+        client.maxUserId &&
         sheetsService.getAllAppointmentsForClient
       ) {
         const clientAppointments =
-          await sheetsService.getAllAppointmentsForClient(client.telegramId);
+          await sheetsService.getAllAppointmentsForClient(client.maxUserId);
         const todayStr = dayjs().tz(timezone).format("YYYY-MM-DD");
         const createdToday = clientAppointments.filter((a) => {
           if (!a.createdAtUtc) {
@@ -368,15 +368,15 @@ function createBookingService({ sheetsService, config, calendarService }) {
 
       // Проверяем записи пользователя по любому из доступных идентификаторов
       const sameUserAppointments = allActiveAppointments.filter((a) => {
-        // Проверяем совпадение по telegramId (приоритетный идентификатор)
-        if (client.telegramId && a.telegramId) {
-          const clientTgId = String(client.telegramId).trim();
-          const appointmentTgId = String(a.telegramId).trim();
-          if (clientTgId && appointmentTgId && clientTgId === appointmentTgId) {
+        // Проверяем совпадение по maxUserId (приоритетный идентификатор)
+        if (client.maxUserId && a.maxUserId) {
+          const clientMaxUserId = String(client.maxUserId).trim();
+          const appointmentMaxUserId = String(a.maxUserId).trim();
+          if (clientMaxUserId && appointmentMaxUserId && clientMaxUserId === appointmentMaxUserId) {
             return true;
           }
         }
-        // Проверяем совпадение по phone (если telegramId не совпал)
+        // Проверяем совпадение по phone (если maxUserId не совпал)
         if (client.phone && a.phone) {
           const normalizedClientPhone = normalizePhone(client.phone);
           const normalizedAppointmentPhone = normalizePhone(a.phone);
@@ -424,23 +424,23 @@ function createBookingService({ sheetsService, config, calendarService }) {
       comment: sanitizedComment,
       status: STATUSES.ACTIVE,
       cancelCode,
-      telegramId: client.telegramId,
+      maxUserId: client.maxUserId,
     };
 
     await sheetsService.appendAppointment(appointment);
 
     // Обновляем/создаём клиента
     await sheetsService.upsertClient({
-      telegramId: client.telegramId,
+      maxUserId: client.maxUserId,
       name: client.name,
       phone: client.phone,
       lastAppointmentAtUtc: createdAtUtc,
     });
 
     // Очищаем флаг отправки 28-дневного напоминания при новой записи
-    if (client.telegramId && sheetsService.clear28DayReminderSentAt) {
+    if (client.maxUserId && sheetsService.clear28DayReminderSentAt) {
       try {
-        await sheetsService.clear28DayReminderSentAt(client.telegramId);
+        await sheetsService.clear28DayReminderSentAt(client.maxUserId);
       } catch (e) {
         // не блокируем при ошибке очистки
       }
@@ -509,7 +509,7 @@ function createBookingService({ sheetsService, config, calendarService }) {
     };
   }
 
-  async function cancelAppointment(id, telegramId) {
+  async function cancelAppointment(id, maxUserId) {
     // Получаем запись для проверки владельца
     const appointment = await sheetsService.getAppointmentById(id);
 
@@ -518,7 +518,7 @@ function createBookingService({ sheetsService, config, calendarService }) {
     }
 
     // Проверяем, что отменяет владелец записи
-    if (String(appointment.telegramId) !== String(telegramId)) {
+    if (String(appointment.maxUserId) !== String(maxUserId)) {
       return { ok: false, reason: "not_owner" };
     }
 
@@ -557,7 +557,7 @@ function createBookingService({ sheetsService, config, calendarService }) {
       return [];
     }
     const timezone = await sheetsService.getTimezone();
-    return sheetsService.getFutureAppointmentsForTelegram(userId, timezone);
+    return sheetsService.getFutureAppointmentsForUser(userId, timezone);
   }
 
   async function cancelAppointmentByCode(cancelCode) {

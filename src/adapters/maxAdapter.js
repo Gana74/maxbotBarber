@@ -1,5 +1,5 @@
 /**
- * Адаптер MAX Bot API — эмуляция интерфейса Telegraf для сервисов и утилит.
+ * Адаптер MAX Bot API для сервисов и handlers.
  */
 
 const { Keyboard, ImageAttachment } = require("@maxhub/max-bot-api");
@@ -46,15 +46,6 @@ class MaxAdapter {
     this.calendarService = calendarService ?? null;
     this.bot = bot;
     this.api = bot.api;
-  }
-
-  get telegram() {
-    return {
-      sendMessage: (chatId, text, options) =>
-        this.sendMessage(chatId, text, options),
-      sendPhoto: (chatId, photo, options = {}) =>
-        this.sendPhoto(chatId, photo, options.caption ?? "", options),
-    };
   }
 
   getUserId(ctx) {

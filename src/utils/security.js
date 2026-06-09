@@ -53,14 +53,14 @@ class LRUCache {
 const validationCache = new LRUCache(100);
 
 /**
- * Валидация Telegram / MAX user ID.
+ * Валидация MAX user ID.
  * @param {string|number} id
  * @returns {boolean}
  */
-function validateTelegramId(id) {
+function validateMaxUserId(id) {
   if (id === null || id === undefined) return false;
 
-  const cacheKey = `tgid:${id}`;
+  const cacheKey = `maxUserId:${id}`;
   const cached = validationCache.get(cacheKey);
   if (cached !== null) {
     return cached;
@@ -397,7 +397,7 @@ function clearValidationCache() {
 module.exports = {
   CALLBACK_MAX_AGE_MS,
   MAX_IMAGE_ATTACHMENT_BYTES,
-  validateTelegramId,
+  validateMaxUserId,
   validatePhone,
   validateName,
   sanitizeText,

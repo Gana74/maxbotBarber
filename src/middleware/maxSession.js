@@ -1,5 +1,5 @@
 /**
- * Файловые сессии для MAX Bot (аналог telegraf-session-local).
+ * Файловые сессии для MAX Bot.
  * Формат sessions.json: { sessions: [{ id, data }] }, id = userId (строка).
  */
 
@@ -141,7 +141,7 @@ function cleanupSessionsFile({
 }
 
 /**
- * Удаляет устаревшие поля Telegraf-сцен при старте (миграция с Telegram).
+ * Удаляет устаревшие поля __scenes из старых сессий при старте.
  */
 function sanitizeStaleScenes(database = DEFAULT_DATABASE) {
   try {

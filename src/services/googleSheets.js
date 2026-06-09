@@ -6,7 +6,7 @@ const dayjs = require("dayjs");
 const {
   sanitizeSheetsInput,
   hasFormulaInjectionPattern,
-  validateTelegramId,
+  validateMaxUserId,
   validateAppointmentId,
   validateDateStr,
   validateCancelCode,
@@ -196,7 +196,7 @@ async function createSheetsService(config) {
       comment: Комментарий,
       status: Статус,
       cancelCode: Код_отмены,
-      telegramId: Max_ID,
+      maxUserId: Max_ID,
       completedAtUtc: Исполнено_UTC,
       cancelledAtUtc: Отменено_UTC,
     };
@@ -1496,7 +1496,7 @@ async function createSheetsService(config) {
       comment,
       status,
       cancelCode,
-      telegramId,
+      maxUserId,
     } = appointment;
 
     await sheets.spreadsheets.values.append({
@@ -1519,7 +1519,7 @@ async function createSheetsService(config) {
             safeCellValue(comment || "", 200, { field: "comment" }),
             safeCellValue(status || "активна", 30, { field: "status" }),
             cancelCode,
-            String(telegramId || ""),
+            String(maxUserId || ""),
             "", // Исполнено_UTC - пусто при создании
             "", // Отменено_UTC
           ],
@@ -1597,17 +1597,17 @@ async function createSheetsService(config) {
       rowValues[13] = completedAtUtc; // Исполнено_UTC
 
       // Обновляем lastAppointmentAtUtc в таблице клиентов
-      const telegramId = rowValues[12]; // Max_ID
-      if (telegramId && String(telegramId).trim() !== "") {
+      const maxUserId = rowValues[12]; // Max_ID
+      if (maxUserId && String(maxUserId).trim() !== "") {
         try {
           await upsertClient({
-            telegramId: String(telegramId),
+            maxUserId: String(maxUserId),
             lastAppointmentAtUtc: completedAtUtc,
           });
         } catch (e) {
           // Логируем ошибку, но не блокируем обновление статуса записи
           console.error(
-            `[updateAppointmentStatus] Ошибка при обновлении lastAppointmentAtUtc для клиента ${telegramId}:`,
+            `[updateAppointmentStatus] Ошибка при обновлении lastAppointmentAtUtc для клиента ${maxUserId}:`,
             e.message || e,
           );
         }
@@ -1631,7 +1631,7 @@ async function createSheetsService(config) {
   }
 
   async function upsertClient(client) {
-    const { telegramId, name, phone, lastAppointmentAtUtc } = client;
+    const { maxUserId, name, phone, lastAppointmentAtUtc } = client;
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
@@ -1643,8 +1643,8 @@ async function createSheetsService(config) {
     let existingTotal = 0;
 
     rows.forEach((row, idx) => {
-      const existingTelegramId = row[2]; // Max_ID
-      if (String(existingTelegramId) === String(telegramId)) {
+      const existingMaxUserId = row[2]; // Max_ID
+      if (String(existingMaxUserId) === String(maxUserId)) {
         targetRowIndex = idx;
         existingTotal = Number(row[6] || 0);
       }
@@ -1652,7 +1652,7 @@ async function createSheetsService(config) {
 
     if (targetRowIndex === -1) {
       // Вставка нового клиента
-      const clientId = `C_${telegramId}`;
+      const clientId = `C_${maxUserId}`;
       const firstSeenUtc = dayjs().utc().toISOString();
 
       await sheets.spreadsheets.values.append({
@@ -1665,7 +1665,7 @@ async function createSheetsService(config) {
             [
               clientId,
               firstSeenUtc,
-              String(telegramId),
+              String(maxUserId),
               safeCellValue(name || ""),
               safeCellValue(phone || ""),
               lastAppointmentAtUtc || "",
@@ -1706,8 +1706,8 @@ async function createSheetsService(config) {
     }
   }
 
-  async function getFutureAppointmentsForTelegram(telegramId, timezone) {
-    if (!validateTelegramId(telegramId)) {
+  async function getFutureAppointmentsForUser(maxUserId, timezone) {
+    if (!validateMaxUserId(maxUserId)) {
       return [];
     }
     // Комментарий: читаем только из активных записей (уменьшенный диапазон)
@@ -1723,7 +1723,7 @@ async function createSheetsService(config) {
       .map(parseAppointmentRow)
       .filter(
         (row) =>
-          String(row.telegramId) === String(telegramId) &&
+          String(row.maxUserId) === String(maxUserId) &&
           row.status === "активна",
       )
       .filter((row) => {
@@ -1879,7 +1879,7 @@ async function createSheetsService(config) {
       return {
         id: ID_клиента,
         firstSeenUtc: Первое_посещение_UTC,
-        telegramId: Max_ID,
+        maxUserId: Max_ID,
         name: Имя,
         phone: Телефон,
         lastAppointmentAtUtc: Последняя_запись_UTC,
@@ -1900,8 +1900,8 @@ async function createSheetsService(config) {
     const hours24 = 24 * 60 * 60 * 1000; // 24 часа в миллисекундах
 
     return clients.filter((client) => {
-      // Исключаем клиентов без telegramId
-      if (!client.telegramId) {
+      // Исключаем клиентов без maxUserId
+      if (!client.maxUserId) {
         return false;
       }
 
@@ -1930,13 +1930,13 @@ async function createSheetsService(config) {
     });
   }
 
-  async function markBroadcastSent(telegramIds) {
+  async function markBroadcastSent(maxUserIds) {
     // Комментарий: отмечает клиентов меткой времени рассылки (массовое обновление)
-    if (!Array.isArray(telegramIds) || telegramIds.length === 0) {
+    if (!Array.isArray(maxUserIds) || maxUserIds.length === 0) {
       return true;
     }
 
-    const telegramIdsStr = telegramIds.map(String);
+    const maxUserIdsStr = maxUserIds.map(String);
     const now = dayjs().utc().toISOString();
 
     // Получаем все клиенты
@@ -1950,9 +1950,9 @@ async function createSheetsService(config) {
     const updates = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const telegramId = row[2]; // Max_ID в индексе 2
+      const maxUserId = row[2]; // Max_ID в индексе 2
 
-      if (telegramId && telegramIdsStr.includes(String(telegramId))) {
+      if (maxUserId && maxUserIdsStr.includes(String(maxUserId))) {
         const rowNumber = i + 2; // +2 из-за заголовка и сдвига индекса
         // Убедимся, что массив достаточно длинный
         while (row.length < 11) {
@@ -2031,8 +2031,8 @@ async function createSheetsService(config) {
     return rowsToClear.length;
   }
 
-  async function getClientByTelegramId(telegramId) {
-    if (!validateTelegramId(telegramId)) {
+  async function getClientByMaxUserId(maxUserId) {
+    if (!validateMaxUserId(maxUserId)) {
       return null;
     }
     const res = await sheets.spreadsheets.values.get({
@@ -2044,8 +2044,8 @@ async function createSheetsService(config) {
     let targetRowIndex = -1;
     let targetRow = null;
     rows.forEach((row, idx) => {
-      const existingTelegramId = row[2]; // Max_ID
-      if (String(existingTelegramId) === String(telegramId)) {
+      const existingMaxUserId = row[2]; // Max_ID
+      if (String(existingMaxUserId) === String(maxUserId)) {
         targetRowIndex = idx;
         targetRow = row;
       }
@@ -2055,8 +2055,8 @@ async function createSheetsService(config) {
     return { rowNumber: targetRowIndex + 2, rowValues: targetRow };
   }
 
-  async function getUserBanStatus(telegramId) {
-    const entry = await getClientByTelegramId(telegramId);
+  async function getUserBanStatus(maxUserId) {
+    const entry = await getClientByMaxUserId(maxUserId);
     if (!entry) return { banned: false, reason: "" };
     const row = entry.rowValues || [];
     const ban = String(row[7] || "").toLowerCase() === "banned";
@@ -2064,9 +2064,9 @@ async function createSheetsService(config) {
     return { banned: ban, reason };
   }
 
-  async function setUserBanStatus(telegramId, banned, reason = "") {
-    if (!validateTelegramId(telegramId)) {
-      throw new Error("Invalid telegramId");
+  async function setUserBanStatus(maxUserId, banned, reason = "") {
+    if (!validateMaxUserId(maxUserId)) {
+      throw new Error("Invalid maxUserId");
     }
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
@@ -2076,8 +2076,8 @@ async function createSheetsService(config) {
 
     let targetRowIndex = -1;
     rows.forEach((row, idx) => {
-      const existingTelegramId = row[2];
-      if (String(existingTelegramId) === String(telegramId)) {
+      const existingMaxUserId = row[2];
+      if (String(existingMaxUserId) === String(maxUserId)) {
         targetRowIndex = idx;
       }
     });
@@ -2104,11 +2104,11 @@ async function createSheetsService(config) {
     return true;
   }
 
-  async function getAllAppointmentsForClient(telegramId) {
+  async function getAllAppointmentsForClient(maxUserId) {
     // Комментарий: получаем все записи клиента (включая завершенные и отмененные) из активных и архива
     const appointments = await getAllAppointmentsFromBothSheets();
     return appointments.filter(
-      (row) => String(row.telegramId) === String(telegramId),
+      (row) => String(row.maxUserId) === String(maxUserId),
     );
   }
 
@@ -2124,7 +2124,7 @@ async function createSheetsService(config) {
 
     // Создаем Set для быстрой проверки активных записей
     const clientsWithActiveAppointments = new Set(
-      activeAppointments.map((app) => String(app.telegramId)).filter(Boolean),
+      activeAppointments.map((app) => String(app.maxUserId)).filter(Boolean),
     );
 
     const now = dayjs().utc();
@@ -2136,7 +2136,7 @@ async function createSheetsService(config) {
 
     for (const client of clients) {
       // Быстрые фильтры в начале
-      if (!client.telegramId || client.banned) {
+      if (!client.maxUserId || client.banned) {
         continue;
       }
 
@@ -2149,7 +2149,7 @@ async function createSheetsService(config) {
       }
 
       // Проверка активных записей (быстрая проверка через Set)
-      if (clientsWithActiveAppointments.has(String(client.telegramId))) {
+      if (clientsWithActiveAppointments.has(String(client.maxUserId))) {
         continue;
       }
 
@@ -2174,7 +2174,7 @@ async function createSheetsService(config) {
       // Используем точное сравнение: если прошло 28 дней или больше (>= 28 * 24 часа)
       if (diffDays >= 28) {
         console.log(
-          `[getClientsFor28DayReminder] Клиент ${client.telegramId}: последняя запись ${lastHaircutDate.toISOString()}, прошло ${diffDays.toFixed(2)} дней (${daysSinceLastHaircut} полных дней)`,
+          `[getClientsFor28DayReminder] Клиент ${client.maxUserId}: последняя запись ${lastHaircutDate.toISOString()}, прошло ${diffDays.toFixed(2)} дней (${daysSinceLastHaircut} полных дней)`,
         );
         clientsForReminder.push({
           ...client,
@@ -2191,7 +2191,7 @@ async function createSheetsService(config) {
     return clientsForReminder;
   }
 
-  async function mark28DayReminderSent(telegramId) {
+  async function mark28DayReminderSent(maxUserId) {
     // Комментарий: помечаем, что напоминание отправлено
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
@@ -2201,8 +2201,8 @@ async function createSheetsService(config) {
 
     let targetRowIndex = -1;
     rows.forEach((row, idx) => {
-      const existingTelegramId = row[2];
-      if (String(existingTelegramId) === String(telegramId)) {
+      const existingMaxUserId = row[2];
+      if (String(existingMaxUserId) === String(maxUserId)) {
         targetRowIndex = idx;
       }
     });
@@ -2227,7 +2227,7 @@ async function createSheetsService(config) {
     return true;
   }
 
-  async function clear28DayReminderSentAt(telegramId) {
+  async function clear28DayReminderSentAt(maxUserId) {
     // Комментарий: очищаем поле напоминания при создании новой записи
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: config.google.sheetsId,
@@ -2237,8 +2237,8 @@ async function createSheetsService(config) {
 
     let targetRowIndex = -1;
     rows.forEach((row, idx) => {
-      const existingTelegramId = row[2];
-      if (String(existingTelegramId) === String(telegramId)) {
+      const existingMaxUserId = row[2];
+      if (String(existingMaxUserId) === String(maxUserId)) {
         targetRowIndex = idx;
       }
     });
@@ -2695,7 +2695,7 @@ async function createSheetsService(config) {
     appendAppointment,
     updateAppointmentStatus,
     upsertClient,
-    getFutureAppointmentsForTelegram,
+    getFutureAppointmentsForUser,
     getAppointmentsByDate,
     getAllActiveAppointments,
     getAppointmentById,
@@ -2711,7 +2711,7 @@ async function createSheetsService(config) {
     setWeekdayTemplate,
     deleteWeekdayTemplate,
     invalidateWorkHoursCache,
-    getClientByTelegramId,
+    getClientByMaxUserId,
     getUserBanStatus,
     setUserBanStatus,
     getAllAppointmentsForClient,

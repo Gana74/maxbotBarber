@@ -20,21 +20,21 @@ async function writeBans(list) {
   });
 }
 
-async function isBanned(telegramId) {
+async function isBanned(maxUserId) {
   const bans = await readBans();
-  return bans.some((b) => String(b) === String(telegramId));
+  return bans.some((b) => String(b) === String(maxUserId));
 }
 
-async function banUser(telegramId, reason = "", sheetsService = null) {
+async function banUser(maxUserId, reason = "", sheetsService = null) {
   const bans = await readBans();
-  if (!bans.some((b) => String(b) === String(telegramId))) {
-    bans.push(String(telegramId));
+  if (!bans.some((b) => String(b) === String(maxUserId))) {
+    bans.push(String(maxUserId));
     await writeBans(bans);
   }
   // Синхронизируем с таблицей, если сервис передан
   try {
     if (sheetsService && sheetsService.setUserBanStatus) {
-      await sheetsService.setUserBanStatus(telegramId, true, reason || "");
+      await sheetsService.setUserBanStatus(maxUserId, true, reason || "");
     }
   } catch (e) {
     // не прерываем, если не удалось записать в таблицу
@@ -42,11 +42,11 @@ async function banUser(telegramId, reason = "", sheetsService = null) {
   return true;
 }
 
-async function unbanUser(telegramId, sheetsService = null) {
-  const telegramIdStr = String(telegramId);
+async function unbanUser(maxUserId, sheetsService = null) {
+  const maxUserIdStr = String(maxUserId);
   let bans = await readBans();
   const initialLength = bans.length;
-  bans = bans.filter((b) => String(b) !== telegramIdStr);
+  bans = bans.filter((b) => String(b) !== maxUserIdStr);
   const removed = initialLength !== bans.length;
 
   // Удаляем пользователя из banned.json, если он там был
@@ -58,7 +58,7 @@ async function unbanUser(telegramId, sheetsService = null) {
   // Это нужно, чтобы очистить статус бана в таблице, даже если пользователя не было в banned.json
   try {
     if (sheetsService && sheetsService.setUserBanStatus) {
-      await sheetsService.setUserBanStatus(telegramIdStr, false, "");
+      await sheetsService.setUserBanStatus(maxUserIdStr, false, "");
     }
   } catch (e) {
     console.error("Ошибка при обновлении статуса бана в таблице:", e);
@@ -163,7 +163,7 @@ async function broadcastToClients(
   options = {},
 ) {
   // Поддерживаем два режима: передан список получателей или отправка всем клиентам
-  // Если передан опциональный параметр `options.recipients` - используем его (массив telegramId строк).
+  // Если передан опциональный параметр `options.recipients` - используем его (массив maxUserId строк).
   // options: { recipients: string[] | null, throttleMs: number, skipBanned: boolean }
   const MAX_RECIPIENTS = 250; // Максимальное количество получателей
 
@@ -180,16 +180,16 @@ async function broadcastToClients(
 
   const bans = await readBans();
 
-  // Build targets: either from recipients array or from clientsForBroadcast with telegramId
+  // Build targets: either from recipients array or from clientsForBroadcast with maxUserId
   // Если передан явный список получателей - используем его, иначе используем getClientsForBroadcast()
   const targets = [];
   if (recipients && recipients.length) {
-    recipients.forEach((id) => targets.push({ telegramId: String(id) }));
+    recipients.forEach((id) => targets.push({ maxUserId: String(id) }));
   } else {
     // Используем getClientsForBroadcast() вместо getAllClients() для автоматической фильтрации
     const clientsForBroadcast = await sheetsService.getClientsForBroadcast();
     clientsForBroadcast.forEach((c) => {
-      if (c && c.telegramId) targets.push({ telegramId: String(c.telegramId) });
+      if (c && c.maxUserId) targets.push({ maxUserId: String(c.maxUserId) });
     });
   }
 
@@ -204,17 +204,17 @@ async function broadcastToClients(
   const sentIds = [];
 
   for (const c of targetsToSend) {
-    const tid = String(c.telegramId || "");
-    if (!tid) continue;
+    const maxUserId = String(c.maxUserId || "");
+    if (!maxUserId) continue;
 
     // Пропускаем забаненных пользователей
     if (skipBanned) {
-      if (bans.some((b) => String(b) === tid)) {
+      if (bans.some((b) => String(b) === maxUserId)) {
         continue;
       }
       if (sheetsService && sheetsService.getUserBanStatus) {
         try {
-          const st = await sheetsService.getUserBanStatus(tid);
+          const st = await sheetsService.getUserBanStatus(maxUserId);
           if (st && st.banned) continue;
         } catch (e) {
           // игнорируем ошибки таблицы
@@ -225,11 +225,10 @@ async function broadcastToClients(
     let sendResult = null;
 
     if (payload && typeof payload === "object" && payload.kind === "photo") {
-      // TODO: Требуется миграция file_id в URL или MAX token, так как MAX API требует URL или свой токен для uploadImage
       // Предполагаем, что payload.fileId — HTTPS URL (или уже MAX token)
       sendResult = await sendPhotoToUser(
         bot,
-        tid,
+        maxUserId,
         payload.fileId,
         payload.caption || "",
       );
@@ -238,14 +237,14 @@ async function broadcastToClients(
         typeof payload === "string"
           ? payload
           : (payload && payload.text) || "";
-      sendResult = await sendMessageToUser(bot, tid, text);
+      sendResult = await sendMessageToUser(bot, maxUserId, text);
     }
 
     if (sendResult) {
-      results.push({ id: tid, ok: true });
-      sentIds.push(tid);
+      results.push({ id: maxUserId, ok: true });
+      sentIds.push(maxUserId);
     } else {
-      results.push({ id: tid, ok: false, error: "Failed to send message" });
+      results.push({ id: maxUserId, ok: false, error: "Failed to send message" });
     }
   }
 

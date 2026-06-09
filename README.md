@@ -76,7 +76,7 @@ npm run dev
 | `WORKDAY_END_HOUR` | Конец рабочего дня по умолчанию (20) |
 | `ENABLE_WELCOME_REMINDER` | Приветственные напоминания (`true` / не задано = выкл.) |
 
-> `MANAGER_CHAT_ID` — историческое имя переменной (миграция с другой платформы). В MAX это **user_id** пользователя, не chat id.
+> `MANAGER_CHAT_ID` — в MAX это **user_id** пользователя, не chat id.
 
 ## Интеграция с Google Calendar (опционально)
 

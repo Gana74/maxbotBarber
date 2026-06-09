@@ -581,7 +581,7 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
         name: data.name,
         phone: data.phone,
         username: ctx.user?.username || null,
-        telegramId: userId,
+        maxUserId: userId,
       },
       comment: data.comment,
     });
@@ -740,7 +740,7 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
         `Время: ${appointment.timeStart}–${appointment.timeEnd}`,
         `Клиент: ${appointment.clientName}`,
         `Телефон: ${appointment.phone}`,
-        `MAX ID: ${appointment.telegramId || "нет"}`,
+        `MAX ID: ${appointment.maxUserId || "нет"}`,
         `Комментарий: ${appointment.comment || "нет"}`,
         `Код отмены: ${appointment.cancelCode}`,
       ].join("\n");

@@ -26,8 +26,8 @@ function createBroadcastHandlers({ adapter, sheetsService, bot }) {
         ? await sheetsService.getClientsForBroadcast()
         : [];
       const allClients = await sheetsService.getAllClients();
-      const allClientsWithTelegram = allClients.filter(
-        (c) => c && c.telegramId,
+      const clientsWithMaxUserId = allClients.filter(
+        (c) => c && c.maxUserId,
       );
 
       const timezone = await sheetsService.getTimezone();
@@ -39,7 +39,7 @@ function createBroadcastHandlers({ adapter, sheetsService, bot }) {
       nextMonday = nextMonday.hour(0).minute(0).second(0).millisecond(0);
 
       const availableToday = clientsForBroadcast.length;
-      const totalClients = allClientsWithTelegram.length;
+      const totalClients = clientsWithMaxUserId.length;
       const waitingCount = Math.max(0, totalClients - availableToday);
       const nextResetDate = nextMonday.format("DD.MM.YYYY HH:mm");
       const canSendToday = Math.min(availableToday, MAX_BROADCAST_RECIPIENTS);
@@ -86,8 +86,8 @@ function createBroadcastHandlers({ adapter, sheetsService, bot }) {
       : await sheetsService.getAllClients();
     const bans = await adminService.getBans();
     return clientsForBroadcast
-      .filter((c) => c && c.telegramId)
-      .map((c) => String(c.telegramId))
+      .filter((c) => c && c.maxUserId)
+      .map((c) => String(c.maxUserId))
       .filter((id) => id && !bans.some((b) => String(b) === String(id)));
   };
 
@@ -97,7 +97,7 @@ function createBroadcastHandlers({ adapter, sheetsService, bot }) {
     if (!recipients.length) {
       await adapter.reply(
         ctx,
-        "Нет получателей для рассылки (нет клиентов с telegramId или все в бане).",
+        "Нет получателей для рассылки (нет клиентов с maxUserId или все в бане).",
         { attachments: [buildMainMenuKeyboard()] },
       );
       delete ctx.session.adminAction;
@@ -105,13 +105,13 @@ function createBroadcastHandlers({ adapter, sheetsService, bot }) {
     }
 
     const allClients = await sheetsService.getAllClients();
-    const allClientsWithTelegram = allClients.filter(
-      (c) => c && c.telegramId,
+    const clientsWithMaxUserId = allClients.filter(
+      (c) => c && c.maxUserId,
     ).length;
     const recipientsToSend = recipients.slice(0, MAX_BROADCAST_RECIPIENTS);
     const waitingCount = Math.max(
       0,
-      allClientsWithTelegram - recipients.length,
+      clientsWithMaxUserId - recipients.length,
     );
 
     ctx.session.adminAction = {

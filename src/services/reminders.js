@@ -12,7 +12,7 @@ const { schedule } = require("../utils/apiRateLimiter");
 dayjs.extend(utc);
 dayjs.extend(timezonePlugin);
 
-/** Преобразует опции Telegraf (parse_mode) в формат MAX API. */
+/** Преобразует legacy-опции (parse_mode) в формат MAX API. */
 function toMaxSendOptions(options = {}) {
   const extra = { ...options };
   if (extra.parse_mode === "Markdown") {
@@ -162,7 +162,7 @@ function setupReminders({
         let errorCount = 0;
 
         for (const app of activeAppointments) {
-          if (!app.telegramId) continue;
+          if (!app.maxUserId) continue;
 
           // Пропускаем напоминания для дат, где салон закрыт (на всякий случай)
           if (sheetsService.getWorkHoursForDate) {
@@ -186,7 +186,7 @@ function setupReminders({
             barberPhone,
             barberAddress,
           ].join("\n");
-          const result = await sendMessageToUser(bot, app.telegramId, msg, {
+          const result = await sendMessageToUser(bot, app.maxUserId, msg, {
             parse_mode: "Markdown",
           });
 
@@ -259,7 +259,7 @@ function setupReminders({
         let errorCount = 0;
 
         for (const app of activeApps) {
-          if (!app.telegramId) continue;
+          if (!app.maxUserId) continue;
 
           // Пропускаем, если для этой даты нет рабочих часов (защитная проверка)
           if (sheetsService.getWorkHoursForDate) {
@@ -296,7 +296,7 @@ function setupReminders({
               barberAddress,
             ].join("\n");
 
-            const result = await sendMessageToUser(bot, app.telegramId, msg, {
+            const result = await sendMessageToUser(bot, app.maxUserId, msg, {
               parse_mode: "Markdown",
             });
 
@@ -378,7 +378,7 @@ function setupReminders({
                 );
 
                 // Отправляем уведомление клиенту об окончании услуги
-                if (app.telegramId) {
+                if (app.maxUserId) {
                   try {
                     const tipsData = await sheetsService.getTipsLink();
                     const serviceName = app.service || "Услуга";
@@ -403,14 +403,14 @@ function setupReminders({
                     // Безопасная отправка с обработкой ошибок
                     await sendMessageToUser(
                       bot,
-                      String(app.telegramId),
+                      String(app.maxUserId),
                       message,
                     );
                   } catch (err) {
                     // Дополнительная обработка, если sendMessageToUser вернул ошибку
                     // (хотя она должна обрабатываться внутри)
                     console.error(
-                      `Ошибка отправки уведомления об окончании услуги клиенту ${app.telegramId}:`,
+                      `Ошибка отправки уведомления об окончании услуги клиенту ${app.maxUserId}:`,
                       err.message,
                     );
                     // Не увеличиваем errorCount, так как запись уже успешно завершена
@@ -487,20 +487,20 @@ function setupReminders({
         const messageTemplate = await sheetsService.get28DayReminderMessage();
 
         for (const client of clientsForReminder) {
-          if (!client.telegramId) continue;
+          if (!client.maxUserId) continue;
 
           const clientName = client.name || client.username || "друг";
 
           // Заменяем плейсхолдер {clientName} на реальное имя
           const msg = messageTemplate.replace(/{clientName}/g, clientName);
 
-          const result = await sendMessageToUser(bot, client.telegramId, msg, {
+          const result = await sendMessageToUser(bot, client.maxUserId, msg, {
             parse_mode: "Markdown",
           });
 
           if (result) {
             // Помечаем напоминание как отправленное только если сообщение успешно отправлено
-            await sheetsService.mark28DayReminderSent(client.telegramId);
+            await sheetsService.mark28DayReminderSent(client.maxUserId);
             sentCount++;
           } else {
             errorCount++;

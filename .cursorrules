@@ -1,26 +1,24 @@
 # Роль и цель
-Ты — Senior Node.js разработчик. Твоя задача: написать слой Telegram-бота для мессенджера MAX **с нуля**, но со 100% сохранением существующей бизнес-логики.
+Ты — Senior Node.js разработчик MAX-бота для парикмахерского салона. Проект использует `@maxhub/max-bot-api`, Google Sheets и машину состояний на `ctx.session`.
 
 # Источники истины (СТРОГО ИЗУЧИ ПЕРЕД НАЧАЛОМ)
 1. Бизнес-логика и UX: `README.md`, `MASTER.md`, `MANAGER.md`.
 2. Синтаксис MAX API: `Подготовка и настройка бота.txt`, `Работа с библиотекой JavaScript.txt`.
 
 # Жесткие архитектурные правила (STRICT RULES)
-1. **НЕ МЕНЯЙ БИЗНЕС-ЛОГИКУ**: Файлы в `src/services/` (googleSheets, booking, reminders, admin) и `src/utils/` считаются "черными ящиками". Не переписывай их алгоритмы. Если нужно новое поведение, создавай обертки, а не меняй оригинал.
-2. **СИНТАКСИС MAX API**: Забудь про Telegraf. Используй только синтаксис из документации MAX:
+1. **НЕ МЕНЯЙ БИЗНЕС-ЛОГИКУ без необходимости**: Файлы в `src/services/` (googleSheets, booking, reminders, admin) и `src/utils/` — ядро домена. Не переписывай алгоритмы. Если нужно новое поведение, создавай обертки.
+2. **СИНТАКСИС MAX API**: Используй только синтаксис из документации MAX:
    - Инициализация: `const bot = new Bot(process.env.MAX_BOT_TOKEN);`
-   - ID пользователя: ВСЕГДА используй `ctx.user.user_id` (вместо `ctx.from.id`).
+   - ID пользователя: ВСЕГДА `ctx.user.user_id` (в коде — `maxUserId`).
    - Проверка админа: `ctx.user.user_id === Number(config.managerChatId)`.
    - Отправка: `ctx.reply('text')` или `bot.api.sendMessageToUser(userId, 'text')`.
-3. **УПРАВЛЕНИЕ СОСТОЯНИЕМ (Вместо WizardScene)**: В MAX нет встроенных сцен. Используй объект `ctx.session` для создания простой машины состояний (step-by-step). 
+3. **УПРАВЛЕНИЕ СОСТОЯНИЕМ**: В MAX нет встроенных сцен. Используй `ctx.session` для step-by-step сценариев.
    Пример: `ctx.session.step = 'awaiting_date'`, `ctx.session.data = { service: '...', date: '...' }`.
-4. **КЛАВИАТУРЫ**: Используй `Keyboard.inlineKeyboard` и `Keyboard.button.callback` из документации MAX. Для запроса телефона используй `Keyboard.button.requestContact`.
-5. **ФОТО И ПОРТФОЛИО**: В старой системе использовался Telegram `file_id`. В MAX для отправки фото нужен либо `token` файла в MAX, либо прямая `url`-ссылка. При генерации кода для портфолио или рассылок фото, предполагай, что мы будем использовать метод `ctx.api.uploadImage({ url: '...' })`.
-6. **БЕЗОПАСНОСТЬ**: Сохрани существующий Rate Limiting (10/мин для админа, 30/мин для юзера) и санитизацию ввода, адаптировав их под middleware MAX.
+4. **КЛАВИАТУРЫ**: `Keyboard.inlineKeyboard` и `Keyboard.button.callback`. Для телефона — `Keyboard.button.requestContact`.
+5. **ФОТО И ПОРТФОЛИО**: Для отправки фото нужен `token` файла в MAX или HTTPS `url`. Используй `ctx.api.uploadImage({ url: '...' })`.
+6. **БЕЗОПАСНОСТЬ**: Rate Limiting (10/мин для админа, 30/мин для юзера) и санитизация ввода через middleware MAX.
 
-# План выполнения (Двигайся строго по шагам, спрашивай подтверждения)
-1. Создать новый адаптер `src/adapters/maxAdapter.js`.
-2. Обновить `index.js` для инициализации нового адаптера.
-3. Написать обработчик пользовательского сценария записи (`booking`) через `ctx.session`.
-4. Написать обработчики админ-панели.
-5. Адаптировать `src/services/reminders.js` и `src/services/admin.js` (рассылки) для использования `bot.api.sendMessageToUser`.
+# Структура проекта
+- `src/adapters/maxAdapter.js` — адаптер MAX API для handlers и утилит.
+- `src/maxBot/` — пользовательские и админ handlers, сцена записи.
+- `index.js` — точка входа, инициализация бота и cron-задач.

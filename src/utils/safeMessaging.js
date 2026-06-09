@@ -12,42 +12,35 @@ function getErrorCode(err) {
 }
 
 /**
- * Универсальный ID пользователя (MAX: ctx.user.user_id, Telegraf: ctx.from.id).
- * @param {Object} ctx - Контекст бота
+ * MAX user ID из контекста бота.
+ * @param {Object} ctx - Контекст MAX Bot
  * @returns {string|number}
  */
 function getUserId(ctx) {
-  return ctx?.user?.user_id ?? ctx?.from?.id ?? "unknown";
+  return ctx?.user?.user_id ?? "unknown";
 }
 
 /**
- * Безопасная отправка текстового сообщения через bot.telegram.sendMessage
- * @param {Object} bot - Экземпляр Telegraf бота
- * @param {string|number} chatId - ID чата для отправки
+ * Безопасная отправка текстового сообщения через messenger.sendMessage.
+ * @param {Object} messenger - Объект с методом sendMessage (например, MaxAdapter)
+ * @param {string|number} userId - MAX user_id получателя
  * @param {string} text - Текст сообщения
  * @param {Object} options - Дополнительные опции для sendMessage
  * @returns {Promise<Object|null>} Результат отправки или null при ошибке
  */
-async function safeSendMessage(bot, chatId, text, options = {}) {
-  // Поддерживаем как bot (объект с полем telegram), так и ctx.telegram (экземпляр Telegram)
-  let telegram = null;
-  if (bot && bot.telegram) {
-    telegram = bot.telegram;
-  } else if (bot && typeof bot.sendMessage === 'function') {
-    // Это уже экземпляр Telegram API (ctx.telegram)
-    telegram = bot;
-  } else {
-    console.error("[safeMessaging] Invalid bot instance");
+async function safeSendMessage(messenger, userId, text, options = {}) {
+  if (!messenger?.sendMessage) {
+    console.error("[safeMessaging] Invalid messenger: sendMessage missing");
     return null;
   }
 
-  if (!chatId) {
-    console.error("[safeMessaging] Invalid chatId");
+  if (!userId) {
+    console.error("[safeMessaging] Invalid userId");
     return null;
   }
 
   try {
-    const result = await telegram.sendMessage(chatId, text, options);
+    const result = await messenger.sendMessage(userId, text, options);
     return result;
   } catch (err) {
     const errorCode = getErrorCode(err);
@@ -57,15 +50,15 @@ async function safeSendMessage(bot, chatId, text, options = {}) {
     // 403 Forbidden - пользователь заблокировал бота
     if (errorCode === 403) {
       console.warn(
-        `[safeMessaging] User ${chatId} blocked the bot. Message not sent.`,
+        `[safeMessaging] User ${userId} blocked the bot. Message not sent.`,
       );
       return null;
     }
 
-    // 400 Bad Request - неверный запрос (например, неверный chat_id)
+    // 400 Bad Request - неверный запрос (например, неверный user_id)
     if (errorCode === 400) {
       console.warn(
-        `[safeMessaging] Bad request for chat ${chatId}: ${errorDescription}`,
+        `[safeMessaging] Bad request for user ${userId}: ${errorDescription}`,
       );
       return null;
     }
@@ -74,49 +67,42 @@ async function safeSendMessage(bot, chatId, text, options = {}) {
     if (errorCode === 429 || isRateLimitError(err)) {
       const retryMs = getRetryAfterMs(err);
       console.warn(
-        `[safeMessaging] Rate limit exceeded for chat ${chatId}. Retry after: ${retryMs ? `${retryMs}ms` : "unknown"}`,
+        `[safeMessaging] Rate limit exceeded for user ${userId}. Retry after: ${retryMs ? `${retryMs}ms` : "unknown"}`,
       );
       return null;
     }
 
     // Другие ошибки - логируем с деталями
     console.error(
-      `[safeMessaging] Error sending message to ${chatId}:`,
+      `[safeMessaging] Error sending message to ${userId}:`,
       errorDescription,
-      `(code: ${errorCode || 'unknown'})`,
+      `(code: ${errorCode || "unknown"})`,
     );
     return null;
   }
 }
 
 /**
- * Безопасная отправка фото через bot.telegram.sendPhoto
- * @param {Object} bot - Экземпляр Telegraf бота
- * @param {string|number} chatId - ID чата для отправки
- * @param {string} photo - File ID или URL фото
+ * Безопасная отправка фото через messenger.sendPhoto.
+ * @param {Object} messenger - Объект с методом sendPhoto (например, MaxAdapter)
+ * @param {string|number} userId - MAX user_id получателя
+ * @param {string} photo - URL фото или MAX token
  * @param {Object} options - Дополнительные опции для sendPhoto
  * @returns {Promise<Object|null>} Результат отправки или null при ошибке
  */
-async function safeSendPhoto(bot, chatId, photo, options = {}) {
-  // Поддерживаем как bot (объект с полем telegram), так и ctx.telegram (экземпляр Telegram)
-  let telegram = null;
-  if (bot && bot.telegram) {
-    telegram = bot.telegram;
-  } else if (bot && typeof bot.sendPhoto === 'function') {
-    // Это уже экземпляр Telegram API (ctx.telegram)
-    telegram = bot;
-  } else {
-    console.error("[safeMessaging] Invalid bot instance");
+async function safeSendPhoto(messenger, userId, photo, options = {}) {
+  if (!messenger?.sendPhoto) {
+    console.error("[safeMessaging] Invalid messenger: sendPhoto missing");
     return null;
   }
 
-  if (!chatId) {
-    console.error("[safeMessaging] Invalid chatId");
+  if (!userId) {
+    console.error("[safeMessaging] Invalid userId");
     return null;
   }
 
   try {
-    const result = await telegram.sendPhoto(chatId, photo, options);
+    const result = await messenger.sendPhoto(userId, photo, options);
     return result;
   } catch (err) {
     const errorCode = getErrorCode(err);
@@ -126,7 +112,7 @@ async function safeSendPhoto(bot, chatId, photo, options = {}) {
     // 403 Forbidden - пользователь заблокировал бота
     if (errorCode === 403) {
       console.warn(
-        `[safeMessaging] User ${chatId} blocked the bot. Photo not sent.`,
+        `[safeMessaging] User ${userId} blocked the bot. Photo not sent.`,
       );
       return null;
     }
@@ -134,7 +120,7 @@ async function safeSendPhoto(bot, chatId, photo, options = {}) {
     // 400 Bad Request
     if (errorCode === 400) {
       console.warn(
-        `[safeMessaging] Bad request for chat ${chatId}: ${errorDescription}`,
+        `[safeMessaging] Bad request for user ${userId}: ${errorDescription}`,
       );
       return null;
     }
@@ -143,26 +129,26 @@ async function safeSendPhoto(bot, chatId, photo, options = {}) {
     if (errorCode === 429 || isRateLimitError(err)) {
       const retryMs = getRetryAfterMs(err);
       console.warn(
-        `[safeMessaging] Rate limit exceeded for chat ${chatId}. Retry after: ${retryMs ? `${retryMs}ms` : "unknown"}`,
+        `[safeMessaging] Rate limit exceeded for user ${userId}. Retry after: ${retryMs ? `${retryMs}ms` : "unknown"}`,
       );
       return null;
     }
 
     // Другие ошибки
     console.error(
-      `[safeMessaging] Error sending photo to ${chatId}:`,
+      `[safeMessaging] Error sending photo to ${userId}:`,
       errorDescription,
-      `(code: ${errorCode || 'unknown'})`,
+      `(code: ${errorCode || "unknown"})`,
     );
     return null;
   }
 }
 
 /**
- * Безопасный ответ через ctx.reply
- * @param {Object} ctx - Контекст Telegraf
+ * Безопасный ответ через ctx.reply.
+ * @param {Object} ctx - Контекст MAX Bot
  * @param {string} text - Текст сообщения
- * @param {Object} extra - Дополнительные опции (keyboard, parse_mode и т.д.)
+ * @param {Object} extra - Дополнительные опции (keyboard, format и т.д.)
  * @returns {Promise<Object|null>} Результат отправки или null при ошибке
  */
 async function safeReply(ctx, text, extra = {}) {
@@ -214,7 +200,7 @@ async function safeReply(ctx, text, extra = {}) {
     console.error(
       `[safeMessaging] Error replying to user ${userId}:`,
       errorDescription,
-      `(code: ${errorCode || 'unknown'})`,
+      `(code: ${errorCode || "unknown"})`,
     );
     return null;
   }

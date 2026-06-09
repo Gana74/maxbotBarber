@@ -33,7 +33,7 @@ function createBookingsHandlers({ adapter, sheetsService, bookingService }) {
     const all = await sheetsService.getAllActiveAppointments();
     const clients = await sheetsService.getAllClients();
     const uniqueClients = new Set(
-      clients.map((c) => String(c.telegramId)).filter(Boolean),
+      clients.map((c) => String(c.maxUserId)).filter(Boolean),
     ).size;
     await adapter.reply(
       ctx,
@@ -102,16 +102,16 @@ function createBookingsHandlers({ adapter, sheetsService, bookingService }) {
         {
           appointmentId: appointment.id,
           cancelCode,
-          clientTelegramId: appointment.telegramId,
+          clientMaxUserId: appointment.maxUserId,
           date: appointment.date,
           time: appointment.timeStart,
         },
         "success",
       );
-      if (appointment.telegramId) {
+      if (appointment.maxUserId) {
         await safeSendMessage(
           adapter,
-          String(appointment.telegramId),
+          String(appointment.maxUserId),
           `Ваша запись на ${formatDate(appointment.date)} ${
             appointment.timeStart
           } отменена менеджером.`,
