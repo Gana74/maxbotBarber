@@ -301,6 +301,7 @@ function registerUserHandlers(
   sheetsService,
   bookingService,
   servicesService,
+  haircutHandlers = null,
 ) {
   const h = createUserHandlers(
     adapter,
@@ -342,6 +343,12 @@ function registerUserHandlers(
   bot.hears(["Как добраться", "Как добраться 🗺️"], async (ctx) => {
     await h.handleLocation(ctx);
   });
+
+  if (haircutHandlers?.startHaircutFlow) {
+    bot.hears("✨ Подобрать стрижку с ИИ", async (ctx) => {
+      await haircutHandlers.startHaircutFlow(ctx);
+    });
+  }
 
   bot.action(/^cancel_app:.+/, async (ctx) => {
     await h.handleCancelAppointment(ctx);

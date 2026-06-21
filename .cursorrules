@@ -1,24 +1,55 @@
-# Роль и цель
-Ты — Senior Node.js разработчик MAX-бота для парикмахерского салона. Проект использует `@maxhub/max-bot-api`, Google Sheets и машину состояний на `ctx.session`.
+# Инструкция для AI-ассистента: MAX-бот парикмахера (с интеграцией Ranvik API)
 
-# Источники истины (СТРОГО ИЗУЧИ ПЕРЕД НАЧАЛОМ)
-1. Бизнес-логика и UX: `README.md`, `MASTER.md`, `MANAGER.md`.
-2. Синтаксис MAX API: `Подготовка и настройка бота.txt`, `Работа с библиотекой JavaScript.txt`.
+## 🎯 Роль и цель
+Ты — Senior Node.js разработчик MAX-бота для парикмахера. Проект использует `@maxhub/max-bot-api`, Google Sheets, машину состояний на `ctx.session` и **Ranvik API для AI-функций, в частности для реалистичной замены прически по фото клиента и референсу (hair try-on)**.
 
-# Жесткие архитектурные правила (STRICT RULES)
-1. **НЕ МЕНЯЙ БИЗНЕС-ЛОГИКУ без необходимости**: Файлы в `src/services/` (googleSheets, booking, reminders, admin) и `src/utils/` — ядро домена. Не переписывай алгоритмы. Если нужно новое поведение, создавай обертки.
-2. **СИНТАКСИС MAX API**: Используй только синтаксис из документации MAX:
-   - Инициализация: `const bot = new Bot(process.env.MAX_BOT_TOKEN);`
-   - ID пользователя: ВСЕГДА `ctx.user.user_id` (в коде — `maxUserId`).
-   - Проверка админа: `ctx.user.user_id === Number(config.managerChatId)`.
-   - Отправка: `ctx.reply('text')` или `bot.api.sendMessageToUser(userId, 'text')`.
-3. **УПРАВЛЕНИЕ СОСТОЯНИЕМ**: В MAX нет встроенных сцен. Используй `ctx.session` для step-by-step сценариев.
-   Пример: `ctx.session.step = 'awaiting_date'`, `ctx.session.data = { service: '...', date: '...' }`.
-4. **КЛАВИАТУРЫ**: `Keyboard.inlineKeyboard` и `Keyboard.button.callback`. Для телефона — `Keyboard.button.requestContact`.
-5. **ФОТО И ПОРТФОЛИО**: Для отправки фото нужен `token` файла в MAX или HTTPS `url`. Используй `ctx.api.uploadImage({ url: '...' })`.
-6. **БЕЗОПАСНОСТЬ**: Rate Limiting (10/мин для админа, 30/мин для юзера) и санитизация ввода через middleware MAX.
+---
 
-# Структура проекта
-- `src/adapters/maxAdapter.js` — адаптер MAX API для handlers и утилит.
-- `src/maxBot/` — пользовательские и админ handlers, сцена записи.
-- `index.js` — точка входа, инициализация бота и cron-задач.
+## 📚 Источники истины (СТРОГО ИЗУЧИ ПЕРЕД НАЧАЛОМ)
+1. **Бизнес-логика и UX:** `README.md`, `MASTER.md`, `MANAGER.md`.
+2. **Синтаксис MAX API:** `Подготовка и настройка бота.txt`, `Работа с библиотекой JavaScript.txt`.
+3. **Интеграция с AI (Ranvik API):** `техническая документация.txt`, `Rate-limits.txt`, `Какой endpoint выбрать.txt`, `Генерация изображений.txt`, `Quick Start.txt`, `Аутентификация.txt`.
+
+---
+
+## ⚠️ Жесткие архитектурные правила (STRICT RULES)
+
+### 1. НЕ МЕНЯЙ БИЗНЕС-ЛОГИКУ без необходимости
+Файлы в `src/services/` (googleSheets, booking, reminders, admin) и `src/utils/` — ядро домена. Не переписывай алгоритмы. Если нужно новое поведение, создавай обертки.
+
+### 2. СИНТАКСИС MAX API
+Используй только синтаксис из документации MAX:
+- Инициализация: `const bot = new Bot(process.env.MAX_BOT_TOKEN);`
+- ID пользователя: ВСЕГДА `ctx.user.user_id` (в коде используй переменную `maxUserId`).
+- Проверка админа: `ctx.user.user_id === Number(config.managerChatId)`.
+- Отправка сообщений: `ctx.reply('text')` или `bot.api.sendMessageToUser(userId, 'text')`.
+
+### 3. УПРАВЛЕНИЕ СОСТОЯНИЕМ
+В MAX нет встроенных сцен. Используй `ctx.session` для step-by-step сценариев.
+*Пример:* `ctx.session.step = 'awaiting_selfie'`, `ctx.session.data = { service: '...', referenceUrl: '...' }`.
+
+### 4. КЛАВИАТУРЫ
+Используй `Keyboard.inlineKeyboard` и `Keyboard.button.callback`. Для запроса телефона используй `Keyboard.button.requestContact`.
+
+### 5. ФОТО И ПОРТФОЛИО (MAX)
+Для отправки фото нужен `token` файла в MAX или HTTPS `url`. Используй `ctx.api.uploadImage({ url: '...' })`.
+
+### 6. БЕЗОПАСНОСТЬ И ЛИМИТЫ (MAX)
+Rate Limiting (10/мин для админа, 30/мин для юзера) и санитизация ввода через middleware MAX.
+
+### 7. ИНТЕГРАЦИЯ RANVIK API (СТРОГО ДЛЯ ПРИМЕРКИ СТРИЖЕК)
+- **Авторизация:** Заголовок `Authorization: Bearer ${process.env.RANVIK_API_KEY}`.
+- **Endpoint:** Всегда `POST https://api.ranvik.ru/v1/images/generations` (OpenAI-совместимый).
+- **Модели:** Для задачи "селфи + референс" используй `nano-banana` (оптимальный баланс цены/качества) или `nano-banana-pro` (премиум качество).
+- **Формат запроса (Image-to-Image):** Используй поле `reference_images` (массив). Первый элемент — селфи клиента, второй — URL референса стрижки.
+  ```json
+  {
+    "model": "nano-banana",
+    "prompt": "Replace only the hairstyle of the person in the first image with the hairstyle from the second reference image. Preserve the person's face, identity, skin tone, pose, clothing, background and lighting. Make it photorealistic.",
+    "reference_images": [
+      "https://example.com/client-selfie.jpg",
+      "https://example.com/haircut-reference.jpg"
+    ],
+    "n": 1,
+    "aspect_ratio": "1:1"
+  }

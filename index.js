@@ -6,6 +6,7 @@ const { MaxAdapter } = require("./src/adapters/maxAdapter");
 const { maxSession } = require("./src/middleware/maxSession");
 const { registerUserHandlers } = require("./src/maxBot/userHandlers");
 const { registerBookingHandlers } = require("./src/maxBot/scenes/bookingScene");
+const { registerHaircutScene } = require("./src/maxBot/scenes/haircutScene");
 const { registerAdminHandlers } = require("./src/maxBot/admin/adminHandlers");
 const { initConfig } = require("./src/config");
 const { createSheetsService } = require("./src/services/googleSheets");
@@ -18,6 +19,7 @@ const { messageSizeLimiter } = require("./src/middleware/messageSizeLimiter");
 const { setCriticalAlertHandler } = require("./src/utils/logger");
 const { schedule } = require("./src/utils/apiRateLimiter");
 const servicesService = require("./src/services/services");
+const aiResultCache = require("./src/utils/aiResultCache");
 
 /**
  * Некритичные ошибки MAX API и похожих HTTP-клиентов.
@@ -119,12 +121,7 @@ async function main() {
   }
 
   const bot = new Bot(config.maxBotToken);
-  const adapter = new MaxAdapter(
-    config,
-    sheetsService,
-    calendarService,
-    bot,
-  );
+  const adapter = new MaxAdapter(config, sheetsService, calendarService, bot);
 
   const bookingService = createBookingService({
     sheetsService,
@@ -164,14 +161,26 @@ async function main() {
     return next();
   });
 
+  const bookingHandlers = registerBookingHandlers(
+    bot,
+    adapter,
+    sheetsService,
+    bookingService,
+  );
+  const haircutHandlers = registerHaircutScene(
+    bot,
+    adapter,
+    sheetsService,
+    bookingHandlers,
+  );
   registerUserHandlers(
     bot,
     adapter,
     sheetsService,
     bookingService,
     servicesService,
+    haircutHandlers,
   );
-  registerBookingHandlers(bot, adapter, sheetsService, bookingService);
   registerAdminHandlers(bot, adapter, sheetsService, bookingService);
 
   setupReminders({
@@ -252,4 +261,17 @@ async function main() {
 main().catch((err) => {
   console.error("Fatal error in main:", err);
   process.exit(1);
+});
+
+// Graceful shutdown: очищаем ресурсы при выключении
+process.on("SIGTERM", () => {
+  console.log("[main] SIGTERM signal received: closing gracefully");
+  aiResultCache.stop();
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("[main] SIGINT signal received: closing gracefully");
+  aiResultCache.stop();
+  process.exit(0);
 });

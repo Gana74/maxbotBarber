@@ -1,0 +1,62 @@
+{
+  "fade_low": {
+    "id": "fade_low",
+    "name": "Низкий fade",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "fade_mid": {
+    "id": "fade_mid",
+    "name": "Средний fade",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "classic_short": {
+    "id": "classic_short",
+    "name": "Классика короткая",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "undercut": {
+    "id": "undercut",
+    "name": "Андеркат",
+    "photoUrl": "https://i.postimg.cc/mkT2TS14/andd.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "pompadour": {
+    "id": "pompadour",
+    "name": "Помпадур",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "buzzcut": {
+    "id": "buzzcut",
+    "name": "Под машинку",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "BUZZCUT"
+  },
+  "textured_crop": {
+    "id": "textured_crop",
+    "name": "Текстурный кроп",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "side_part": {
+    "id": "side_part",
+    "name": "С пробором",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "curly_top": {
+    "id": "curly_top",
+    "name": "Кудри сверху",
+    "photoUrl": "hhttps://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "long_layers": {
+    "id": "long_layers",
+    "name": "Длинные слои",
+    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "serviceKey": "WOMEN_HAIRCUT"
+  }
+}

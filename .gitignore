@@ -1,10 +1,20 @@
 node_modules/
 .env
-.env.local
-.env.production
 credentials.json
 sessions.json
 banned.json
 security.log
 logs/
 backups/
+MANAGER.md
+MASTER.md
+README.md
+Quick Start.txt
+Rate-limits.txt
+техническая документация.txt
+Какой endpoint выбрать.txt
+Генерация изображений.txt
+Аутентификация.txt
+Подготовка и настройка бота.txt
+Работа с библиотекой JavaScript.txt
+

@@ -49,6 +49,12 @@ function messageButton(text) {
 
 function buildUserMenuKeyboard() {
   return Keyboard.inlineKeyboard([
+    [
+      Keyboard.button.callback(
+        "✨ Подобрать стрижку с ИИ",
+        "haircut_start",
+      ),
+    ],
     [messageButton("Записаться 💇‍♂️")],
     [messageButton("Мои записи"), messageButton("Прайс")],
     [messageButton("Как добраться 🗺️")],

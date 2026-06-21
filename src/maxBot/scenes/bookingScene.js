@@ -21,6 +21,7 @@ const {
   validateTimeStr,
 } = require("../../utils/security");
 const { guardCallback } = require("../admin/helpers");
+const { cancelHaircutIfActive } = require("./haircutScene");
 const { logAction } = require("../../utils/logger");
 const { safeSendMessage } = require("../../utils/safeMessaging");
 
@@ -410,6 +411,37 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
     ctx.session.flow = BOOKING_FLOW;
     ctx.session.data = {};
     await showServiceStep(ctx);
+  };
+
+  /**
+   * Запуск записи с предвыбранной услугой (например, из AI-подбора стрижки).
+   * @param {object} ctx
+   * @param {string} serviceKey
+   */
+  const startBookingWithService = async (ctx, serviceKey) => {
+    if (await checkBanned(ctx)) {
+      await adapter.reply(
+        ctx,
+        "Ваш аккаунт заблокирован для записи. Свяжитесь с администратором.",
+      );
+      return;
+    }
+
+    if (!validateServiceKey(serviceKey)) {
+      await startBooking(ctx);
+      return;
+    }
+
+    const service = bookingService.getServiceByKey(serviceKey);
+    if (!service) {
+      await startBooking(ctx);
+      return;
+    }
+
+    ctx.session = ctx.session || {};
+    ctx.session.flow = BOOKING_FLOW;
+    ctx.session.data = { serviceKey };
+    await showDateStep(ctx);
   };
 
   const requireBookingStep = (ctx, allowedSteps) => {
@@ -854,6 +886,7 @@ function createBookingHandlers(adapter, sheetsService, bookingService) {
 
   return {
     startBooking,
+    startBookingWithService,
     handleServiceCallback,
     handleBackToServicesCallback,
     handleBookingDateCallback,
@@ -890,6 +923,10 @@ function registerBookingHandlers(bot, adapter, sheetsService, bookingService) {
   });
 
   bot.command("cancel", async (ctx) => {
+    if (await cancelHaircutIfActive(ctx, adapter, h.showMainMenu)) {
+      return;
+    }
+
     const cancelled = await h.cancelBooking(ctx);
     if (!cancelled) {
       await adapter.reply(
