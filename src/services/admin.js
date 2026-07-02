@@ -2,6 +2,7 @@ const fs = require("fs").promises;
 const path = require("path");
 const { ImageAttachment } = require("@maxhub/max-bot-api");
 const { schedule } = require("../utils/apiRateLimiter");
+const { uploadImageFromUrlWithApi } = require("../utils/maxImageUpload");
 
 const BANS_FILE = path.resolve(process.cwd(), "banned.json");
 
@@ -139,8 +140,11 @@ async function sendPhotoToUser(bot, userId, urlOrToken, caption = "") {
 
     if (/^https?:\/\//i.test(value)) {
       imageAttachment = await schedule(() =>
-        bot.api.uploadImage({ url: value }),
+        uploadImageFromUrlWithApi(bot.api, value),
       );
+      if (!imageAttachment) {
+        return null;
+      }
     } else {
       imageAttachment = new ImageAttachment({ token: value });
     }

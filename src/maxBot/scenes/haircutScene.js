@@ -10,9 +10,14 @@ const {
   getTemplateById,
 } = require("../../services/haircutTemplatesService");
 const { downloadImageAsBase64 } = require("../../utils/imageDownloader");
+const { uploadImageFromUrl, uploadTemplatePhoto } = require("../../utils/maxImageUpload");
+const { resolveTemplatePhotoForRanvik } = require("../../utils/templatePhotoResolver");
 const aiResultCache = require("../../utils/aiResultCache");
 const { enforceKeyboardLimits } = require("../../utils/maxKeyboard");
-const { validateImageAttachment } = require("../../utils/security");
+const {
+  validateImageAttachment,
+  parseCallbackPayload,
+} = require("../../utils/security");
 const {
   getMessageImageAttachment,
   guardCallback,
@@ -90,30 +95,68 @@ function ensureHaircutAction(ctx) {
 }
 
 /**
+ * @param {{ name: string, description?: string }} template
+ * @param {number} index
+ * @param {number} total
+ * @returns {string}
+ */
+function buildCarouselCaption(template, index, total) {
+  let text = `✨ Стиль: ${template.name}`;
+  if (template.description) {
+    text += `\n${template.description}`;
+  }
+  text += `\n\n${index + 1} из ${total}`;
+  return text;
+}
+
+/**
+ * @param {{ id: string, name: string, description?: string }} template
+ * @param {number} index
+ * @param {number} total
  * @returns {import('@maxhub/max-bot-api').InlineKeyboardAttachment}
  */
-function buildTemplateKeyboard() {
-  const templates = getAllTemplates();
-  const rows = [];
-  let row = [];
+function buildCarouselKeyboard(template, index, total) {
+  const navRow = [];
 
-  templates.forEach((template, index) => {
-    row.push(
-      Keyboard.button.callback(template.name, `haircut_tpl:${template.id}`),
+  if (index > 0) {
+    navRow.push(
+      Keyboard.button.callback(
+        "← Предыдущая",
+        `haircut_carousel:prev:${index}`,
+      ),
     );
-    if ((index + 1) % 2 === 0) {
-      rows.push(row);
-      row = [];
-    }
-  });
-
-  if (row.length) {
-    rows.push(row);
   }
 
-  rows.push([Keyboard.button.callback("Отмена ❌", "haircut_menu")]);
+  navRow.push(
+    Keyboard.button.callback(
+      "Выбрать эту ✅",
+      `haircut_carousel:select:${template.id}`,
+    ),
+  );
 
-  return Keyboard.inlineKeyboard(enforceKeyboardLimits(rows));
+  if (index < total - 1) {
+    navRow.push(
+      Keyboard.button.callback(
+        "Следующая →",
+        `haircut_carousel:next:${index}`,
+      ),
+    );
+  }
+
+  return Keyboard.inlineKeyboard(
+    enforceKeyboardLimits([
+      navRow,
+      [Keyboard.button.callback("Отмена ❌", "haircut_menu")],
+    ]),
+  );
+}
+
+/**
+ * @param {object} ctx
+ * @returns {string|null}
+ */
+function getCallbackMessageId(ctx) {
+  return ctx.messageId || ctx.message?.body?.mid || null;
 }
 
 /**
@@ -166,10 +209,11 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
   };
 
   /**
-   * Шаг 1: показать список шаблонов.
+   * Отправка нового сообщения с каруселью (первый показ / retry).
    * @param {object} ctx
+   * @param {number} index
    */
-  const showTemplateStep = async (ctx) => {
+  const sendCarouselMessage = async (ctx, index) => {
     const templates = getAllTemplates();
     if (!templates.length) {
       await adapter.reply(
@@ -180,16 +224,89 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
       return;
     }
 
+    const safeIndex = Math.max(0, Math.min(index, templates.length - 1));
+    const template = templates[safeIndex];
+    const caption = buildCarouselCaption(template, safeIndex, templates.length);
+    const keyboard = buildCarouselKeyboard(template, safeIndex, templates.length);
+
+    try {
+      const image = await uploadTemplatePhoto(ctx, template);
+      if (!image) {
+        throw new Error("uploadTemplatePhoto returned empty result");
+      }
+      await adapter.reply(ctx, caption, {
+        attachments: [image.toJson(), keyboard],
+      });
+    } catch (error) {
+      console.warn("[haircutScene] carousel uploadImage failed:", error);
+      await adapter.reply(
+        ctx,
+        `${caption}\n\n⚠️ Не удалось загрузить фото референса.`,
+        { attachments: [keyboard] },
+      );
+    }
+  };
+
+  /**
+   * Обновление существующего сообщения карусели через messages.edit.
+   * @param {object} ctx
+   * @param {number} index
+   */
+  const updateCarouselMessage = async (ctx, index) => {
+    const templates = getAllTemplates();
+    if (!templates.length) {
+      await sendCarouselMessage(ctx, 0);
+      return;
+    }
+
+    const messageId = getCallbackMessageId(ctx);
+    if (!messageId) {
+      await sendCarouselMessage(ctx, index);
+      return;
+    }
+
+    const safeIndex = Math.max(0, Math.min(index, templates.length - 1));
+    const template = templates[safeIndex];
+    const caption = buildCarouselCaption(template, safeIndex, templates.length);
+    const keyboard = buildCarouselKeyboard(template, safeIndex, templates.length);
+
+    try {
+      const image = await uploadTemplatePhoto(ctx, template);
+      if (!image) {
+        throw new Error("uploadTemplatePhoto returned empty result");
+      }
+
+      await ctx.api.editMessage(messageId, {
+        text: caption,
+        attachments: [image.toJson(), keyboard],
+      });
+    } catch (error) {
+      console.warn("[haircutScene] updateCarouselMessage failed:", error);
+      await sendCarouselMessage(ctx, safeIndex);
+    }
+  };
+
+  /**
+   * Карусель референсов стрижек.
+   * @param {object} ctx
+   * @param {number} [index]
+   */
+  const showTemplateCarousel = async (ctx, index = 0) => {
     const action = ensureHaircutAction(ctx);
     action.step = STEPS.CHOOSING_TEMPLATE;
+    action.carouselIndex = Math.max(0, index);
     delete action.selectedTemplate;
     delete action.lastResultUrl;
 
-    await adapter.reply(
-      ctx,
-      "✨ Выберите стрижку, которую хотите примерить с помощью ИИ:",
-      { attachments: [buildTemplateKeyboard()] },
-    );
+    await sendCarouselMessage(ctx, action.carouselIndex);
+  };
+
+  /**
+   * Шаг 1: показать карусель шаблонов.
+   * @param {object} ctx
+   */
+  const showTemplateStep = async (ctx) => {
+    await showTemplateCarousel(ctx, 0);
   };
 
   /**
@@ -208,25 +325,12 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
   };
 
   /**
-   * Шаг 2: выбор шаблона.
+   * Листание карусели.
    * @param {object} ctx
+   * @param {'prev'|'next'} direction
+   * @param {number} currentIndexFromPayload
    */
-  const handleTemplateSelect = async (ctx) => {
-    const payload = ctx.update?.callback?.payload;
-    if (!payload?.startsWith("haircut_tpl:")) {
-      return;
-    }
-
-    const templateId = payload.slice("haircut_tpl:".length);
-    const template = getTemplateById(templateId);
-
-    if (!template) {
-      await adapter.reply(ctx, "Шаблон не найден. Выберите другой вариант.", {
-        attachments: [buildTemplateKeyboard()],
-      });
-      return;
-    }
-
+  const handleCarouselNav = async (ctx, direction, currentIndexFromPayload) => {
     const action = ctx.session?.haircutAction;
     if (!action || action.step !== STEPS.CHOOSING_TEMPLATE) {
       await adapter.reply(
@@ -234,6 +338,53 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
         "Сессия истекла. Начните подбор стрижки заново.",
         { attachments: [buildExpiredSessionKeyboard()] },
       );
+      return;
+    }
+
+    const templates = getAllTemplates();
+    if (!templates.length) {
+      await showTemplateStep(ctx);
+      return;
+    }
+
+    const total = templates.length;
+    let index = Number.isFinite(currentIndexFromPayload)
+      ? currentIndexFromPayload
+      : action.carouselIndex ?? 0;
+
+    if (direction === "prev") {
+      index = Math.max(0, index - 1);
+    } else {
+      index = Math.min(total - 1, index + 1);
+    }
+
+    action.carouselIndex = index;
+
+    await updateCarouselMessage(ctx, index);
+  };
+
+  /**
+   * Шаг 2: подтверждение выбора из карусели.
+   * @param {object} ctx
+   * @param {string} templateIdFromPayload
+   */
+  const handleCarouselSelect = async (ctx, templateIdFromPayload) => {
+    const action = ctx.session?.haircutAction;
+    if (!action || action.step !== STEPS.CHOOSING_TEMPLATE) {
+      await adapter.reply(
+        ctx,
+        "Сессия истекла. Начните подбор стрижки заново.",
+        { attachments: [buildExpiredSessionKeyboard()] },
+      );
+      return;
+    }
+
+    const templateId = String(templateIdFromPayload || "").trim();
+    const template =
+      (templateId && getTemplateById(templateId)) || null;
+
+    if (!template) {
+      await showTemplateStep(ctx);
       return;
     }
 
@@ -263,7 +414,15 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
     const template = action?.selectedTemplate;
     const userId = getUserId(ctx);
 
-    if (!template?.photoUrl) {
+    if (!template?.photoUrl && !template?.id) {
+      await adapter.reply(ctx, "Сессия истекла. Начните заново.", {
+        attachments: [buildExpiredSessionKeyboard()],
+      });
+      return;
+    }
+
+    const referencePhoto = await resolveTemplatePhotoForRanvik(template);
+    if (!referencePhoto) {
       await adapter.reply(ctx, "Сессия истекла. Начните заново.", {
         attachments: [buildExpiredSessionKeyboard()],
       });
@@ -279,7 +438,7 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
     try {
       generationResult = await generateHaircut(
         clientPhoto,
-        template.photoUrl,
+        referencePhoto,
         template.name,
       );
     } catch (error) {
@@ -353,9 +512,9 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
 
     try {
       console.log("[haircutScene] uploading result to MAX API...");
-      const image = await ctx.api.uploadImage({ url: resultUrl });
+      const image = await uploadImageFromUrl(ctx, resultUrl, true);
       if (!image) {
-        throw new Error("uploadImage returned empty result");
+        throw new Error("uploadImageFromUrl returned empty result");
       }
       console.log("[haircutScene] successfully uploaded to MAX");
       await adapter.reply(ctx, caption, {
@@ -512,7 +671,9 @@ function createHaircutHandlers(adapter, sheetsService, bookingHandlers) {
   return {
     startHaircutFlow,
     showTemplateStep,
-    handleTemplateSelect,
+    showTemplateCarousel,
+    handleCarouselNav,
+    handleCarouselSelect,
     handleSelfieMessage,
     handleBookCallback,
     returnToMainMenu,
@@ -553,12 +714,41 @@ function registerHaircutScene(bot, adapter, sheetsService, bookingHandlers) {
     await h.startHaircutFlow(ctx);
   });
 
-  bot.action(/^haircut_tpl:.+/, async (ctx) => {
+  bot.action(/^haircut_carousel:prev:\d+$/, async (ctx) => {
     if (!(await guardCallback(ctx, adapter))) {
       return;
     }
+    const payload = ctx.update?.callback?.payload || "";
+    const suffix = parseCallbackPayload(payload, "haircut_carousel:prev:");
+    const currentIndex =
+      suffix != null ? Number.parseInt(suffix, 10) : NaN;
     await adapter.answerCallback(ctx);
-    await h.handleTemplateSelect(ctx);
+    await h.handleCarouselNav(ctx, "prev", currentIndex);
+  });
+
+  bot.action(/^haircut_carousel:next:\d+$/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) {
+      return;
+    }
+    const payload = ctx.update?.callback?.payload || "";
+    const suffix = parseCallbackPayload(payload, "haircut_carousel:next:");
+    const currentIndex =
+      suffix != null ? Number.parseInt(suffix, 10) : NaN;
+    await adapter.answerCallback(ctx);
+    await h.handleCarouselNav(ctx, "next", currentIndex);
+  });
+
+  bot.action(/^haircut_carousel:select:.+$/, async (ctx) => {
+    if (!(await guardCallback(ctx, adapter))) {
+      return;
+    }
+    const payload = ctx.update?.callback?.payload || "";
+    const templateId = parseCallbackPayload(
+      payload,
+      "haircut_carousel:select:",
+    );
+    await adapter.answerCallback(ctx);
+    await h.handleCarouselSelect(ctx, templateId || "");
   });
 
   bot.action("haircut_retry", async (ctx) => {

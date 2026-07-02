@@ -11,6 +11,7 @@ const {
 } = require("../utils/security");
 const { logAction } = require("../utils/logger");
 const { safeSendMessage } = require("../utils/safeMessaging");
+const { uploadImageFromUrl } = require("../utils/maxImageUpload");
 const { createShowUserMainMenu } = require("./showUserMainMenu");
 
 function getUserId(ctx) {
@@ -73,7 +74,10 @@ async function sendPortfolio(ctx, sheetsService, welcomeName) {
     }
 
     try {
-      const image = await ctx.api.uploadImage({ url });
+      const image = await uploadImageFromUrl(ctx, url);
+      if (!image) {
+        throw new Error("uploadImageFromUrl returned empty result");
+      }
       await ctx.reply(" ", { attachments: [image.toJson()] });
     } catch (error) {
       console.warn("[WARN] Не удалось загрузить фото портфолио:", url, error);

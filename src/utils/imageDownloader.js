@@ -89,6 +89,105 @@ async function delayBeforeRetry(attemptIndex) {
 }
 
 /**
+ * Определяет MIME по URL, если сервер не вернул Content-Type.
+ * @param {string} url
+ * @returns {string|null}
+ */
+function guessMimeFromUrl(url) {
+  const lower = String(url || "").toLowerCase();
+  if (/\.jpe?g(\?|#|$)/.test(lower)) return "image/jpeg";
+  if (/\.png(\?|#|$)/.test(lower)) return "image/png";
+  if (/\.webp(\?|#|$)/.test(lower)) return "image/webp";
+  return null;
+}
+
+/**
+ * Скачивает изображение по URL и возвращает Buffer.
+ * @param {string} url
+ * @param {boolean} [checkAccessibility=false]
+ * @returns {Promise<Buffer|null>}
+ */
+async function downloadImageBuffer(url, checkAccessibility = false) {
+  if (!validateSafeUrl(url)) {
+    console.warn("[imageDownloader] invalid image URL:", toLoggableUrl(url));
+    return null;
+  }
+
+  const loggableUrl = toLoggableUrl(url);
+
+  if (checkAccessibility) {
+    const check = await checkUrlAccessibility(url);
+    if (!check.ok) {
+      console.warn(
+        "[imageDownloader] URL not accessible (HEAD request failed):",
+        `status=${check.statusCode}, error=${check.error}`,
+      );
+      return null;
+    }
+  }
+
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await delayBeforeRetry(attempt - 1);
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        signal: controller.signal,
+        headers: {
+          Accept: "image/*,*/*",
+          "User-Agent": "MaxBot/1.0",
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (attempt < RETRY_ATTEMPTS - 1) {
+          continue;
+        }
+        return null;
+      }
+
+      let mime = normalizeMime(response.headers.get("content-type"));
+      if (!ALLOWED_IMAGE_MIME_TYPES.has(mime)) {
+        mime = guessMimeFromUrl(url) || mime;
+      }
+      if (!ALLOWED_IMAGE_MIME_TYPES.has(mime)) {
+        console.warn("[imageDownloader] unsupported mime:", mime || "unknown");
+        return null;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      if (buffer.byteLength > MAX_IMAGE_ATTACHMENT_BYTES) {
+        console.warn(
+          "[imageDownloader] image too large:",
+          buffer.byteLength,
+          "bytes",
+        );
+        return null;
+      }
+
+      return buffer;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (attempt === RETRY_ATTEMPTS - 1) {
+        return null;
+      }
+    }
+  }
+
+  console.error("[imageDownloader] all retry attempts failed:", loggableUrl);
+  return null;
+}
+
+/**
  * Скачивает изображение по URL и возвращает Data URI в base64.
  * С поддержкой retry при сетевых ошибках.
  * @param {string} url - HTTPS URL изображения из MAX attachment.
@@ -141,6 +240,10 @@ async function downloadImageAsBase64(url, checkAccessibility = false) {
       const response = await fetch(url, {
         method: "GET",
         signal: controller.signal,
+        headers: {
+          Accept: "image/*,*/*",
+          "User-Agent": "MaxBot/1.0",
+        },
       });
 
       clearTimeout(timeoutId);
@@ -157,7 +260,10 @@ async function downloadImageAsBase64(url, checkAccessibility = false) {
         return null;
       }
 
-      const mime = normalizeMime(response.headers.get("content-type"));
+      let mime = normalizeMime(response.headers.get("content-type"));
+      if (!ALLOWED_IMAGE_MIME_TYPES.has(mime)) {
+        mime = guessMimeFromUrl(url) || mime;
+      }
       if (!ALLOWED_IMAGE_MIME_TYPES.has(mime)) {
         console.warn("[imageDownloader] unsupported mime:", mime || "unknown");
         return null;
@@ -208,4 +314,5 @@ async function downloadImageAsBase64(url, checkAccessibility = false) {
 
 module.exports = {
   downloadImageAsBase64,
+  downloadImageBuffer,
 };

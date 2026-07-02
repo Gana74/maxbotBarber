@@ -6,6 +6,7 @@ const { Keyboard, ImageAttachment } = require("@maxhub/max-bot-api");
 const { persistChatId, resolveChatId } = require("../utils/maxChat");
 const { schedule } = require("../utils/apiRateLimiter");
 const { enforceKeyboardLimits } = require("../utils/maxKeyboard");
+const { uploadImageFromUrlWithApi } = require("../utils/maxImageUpload");
 
 /**
  * Проверяет структуру ответа MAX API.
@@ -230,11 +231,11 @@ class MaxAdapter {
     const value = String(urlOrToken).trim();
 
     if (/^https?:\/\//i.test(value)) {
-      const uploaded = await this.uploadImage({ url: value });
-      if (!uploaded?.token) {
-        throw new Error("uploadImage did not return token");
+      const uploaded = await uploadImageFromUrlWithApi(this.api, value);
+      if (!uploaded?.token && typeof uploaded?.toJson !== "function") {
+        throw new Error("uploadImageFromUrlWithApi did not return attachment");
       }
-      return new ImageAttachment({ token: uploaded.token });
+      return uploaded;
     }
 
     return new ImageAttachment({ token: value });

@@ -1,62 +1,72 @@
 {
-  "fade_low": {
-    "id": "fade_low",
-    "name": "Низкий fade",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+  "crop": {
+    "id": "crop",
+    "name": "Кроп",
+    "description": "Короткая текстурная стрижка с объёмом на макушке",
+    "photoUrl": "https://i.postimg.cc/nM850Rzt/crop.jpg",
     "serviceKey": "MEN_HAIRCUT"
   },
-  "fade_mid": {
-    "id": "fade_mid",
-    "name": "Средний fade",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+  "quiff": {
+    "id": "quiff",
+    "name": "Квифф",
+    "description": "Объём спереди, уложенные вверх пряди",
+    "photoUrl": "https://i.postimg.cc/rwFtZ8t7/qiff.jpg",
     "serviceKey": "MEN_HAIRCUT"
   },
-  "classic_short": {
-    "id": "classic_short",
-    "name": "Классика короткая",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+  "caesar": {
+    "id": "caesar",
+    "name": "Цезарь",
+    "description": "Короткая чёлка по лбу, ровная линия",
+    "photoUrl": "https://i.postimg.cc/NGmT5Ccx/caesar.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "mullet": {
+    "id": "mullet",
+    "name": "Маллет",
+    "description": "Коротко спереди и по бокам, длиннее сзади",
+    "photoUrl": "https://i.postimg.cc/YSntb7wL/mullet.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "kanadka": {
+    "id": "kanadka",
+    "name": "Канадка",
+    "description": "Короткие виски и затылок, длинная чёлка вперёд",
+    "photoUrl": "https://i.postimg.cc/7ZBvyNtN/kanadka.jpg",
+    "serviceKey": "MEN_HAIRCUT"
+  },
+  "flow": {
+    "id": "flow",
+    "name": "Флоу",
+    "description": "Средняя длина с естественным «течением» волос",
+    "photoUrl": "https://i.postimg.cc/HkvNNkj0/flow.jpg",
     "serviceKey": "MEN_HAIRCUT"
   },
   "undercut": {
     "id": "undercut",
     "name": "Андеркат",
+    "description": "Короткие виски и затылок, длинный верх",
     "photoUrl": "https://i.postimg.cc/mkT2TS14/andd.jpg",
-    "serviceKey": "MEN_HAIRCUT"
-  },
-  "pompadour": {
-    "id": "pompadour",
-    "name": "Помпадур",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
-    "serviceKey": "MEN_HAIRCUT"
-  },
-  "buzzcut": {
-    "id": "buzzcut",
-    "name": "Под машинку",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
-    "serviceKey": "BUZZCUT"
-  },
-  "textured_crop": {
-    "id": "textured_crop",
-    "name": "Текстурный кроп",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
     "serviceKey": "MEN_HAIRCUT"
   },
   "side_part": {
     "id": "side_part",
-    "name": "С пробором",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
+    "name": "Сайд парт",
+    "description": "Классический пробор с одной стороны",
+    "photoUrl": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800",
     "serviceKey": "MEN_HAIRCUT"
   },
-  "curly_top": {
-    "id": "curly_top",
-    "name": "Кудри сверху",
-    "photoUrl": "hhttps://i.postimg.cc/rmGbczz6/pomp.jpg",
+  "slick_back": {
+    "id": "slick_back",
+    "name": "Слик бэк",
+    "description": "Волосы зачёсаны назад, гладкая укладка",
+    "photoUrl": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=800",
     "serviceKey": "MEN_HAIRCUT"
   },
-  "long_layers": {
-    "id": "long_layers",
-    "name": "Длинные слои",
-    "photoUrl": "https://i.postimg.cc/rmGbczz6/pomp.jpg",
-    "serviceKey": "WOMEN_HAIRCUT"
+  "curtains": {
+    "id": "curtains",
+    "name": "Шторы (Кёртейнс)",
+    "description": "Средняя чёлка, расходящаяся от центра",
+    "photoUrl": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=800",
+    "serviceKey": "MEN_HAIRCUT"
   }
 }
